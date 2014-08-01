@@ -1,0 +1,558 @@
+#!/usr/bin/php
+<?php
+/*
+ * Ciphron - Advanced Security
+ *
+ * Tel.: (05 11) 5151 33 0 Fax: (05 11) 5151 33 - 29
+ * Web: http://www.ciphron.de/ Support: (05 11) 5151 33 - 11
+ *
+ * Advanced Nagios printer check
+ *
+ *
+ * @author: jk@ciphron.de
+ * @updated by: os@ciphron.de
+ * @bugfixes / improvements by: Sebastian Puschhof (MIDAN Software GmbH), Juan Jesús Cervera (Teruel)
+ *
+ * Last update: 2014-07-23
+ */
+
+// ignore notices
+error_reporting(E_ALL & ~E_NOTICE);
+
+function help () {
+
+echo $_SERVER['argv'][0]." ip community snmp command
+-> snmp versions = 1, v2c
+
+ -> counter num
+Gibt verschiedenen Counter des Druckers aus. Counter 2-num sind Ricoh spezifisch.
+Counter 1 ist immer Lifetimecounter fuer gedruckte Seiten. Liefert perfdata.
+Status ist immer OK wenn Counter existiert ansonsten UNKNOWN.
+
+ -> toner_kyocera_monochrome
+ -> toner_ricoh_monochrome / toner_ricoh_color
+ -> toner/ink num [warn] [crit] [max]
+Gibt den Status des Toners bzw der Tinte aus. Liefert Fuellstand als perfdata wenn
+moeglich. Wenn der Drucker falsche Maximalwerte fuer Patronen/Toner liefert
+(z.b. HP Businessink) kann mit max der richtige Wert angegeben werden (meist 100).
+warn gibt die Schwelle zwischen ok und warning an (0.0 bis 1.0; default: 0.2 = 20%)
+
+ -> paper num [warn] [crit]
+Gibt den Status des Papiertrays num aus. Liefert Fuellstand als perfdata wenn moeglich.
+warn gibt die Schwelle zwischen ok und warning an (0.0 bis 1.0; default: 0.2 = 20%)
+
+ -> hardware num
+Gibt Status der Komponente num aus (z.b. CPU, RAMDISK).
+Liefert perfdata wenn moeglich (Bedeutung oft ungewiss).
+
+ -> parts num
+Gibt den Status des Druckerteiles num aus (Bsp: Rear Unit).
+
+ -> alerts
+Gibt alle wichtigen Druckermeldungen aus. Ignoriert soweit moeglich unwichtige Meldungen
+(z.b. Energiesparmodus oder Aufwaermphase). Gibt bei jeder Meldung Status=warning.
+Bei Meldungen die trained bzw fieldservice erfordern oder servity gleich critical ist
+wird Status=critical zurueckgegeben.
+
+ -> accounting pw num [warn]
+Gibt den Status der Kostenstelle 1-num aus (Kyocera). Kostenstellen koennen per
+\"KM Net for Accounting\" oder im Druckermenu durch gedrueckt halten von OK und
+Druck auf Menu erstellt werden.
+Passwort setzt sich zusammen aus Druckernummer (4stellig) und wird dann mit 0 auf
+15 Stellen aufgefuellt. (bsp FS-2000 => 200000000000000)
+warn gibt die Schwelle zwischen ok und warning an (0.0 bis 1.0; default: 0.2 = 20%)
+Liefert perfdata
+";
+
+}
+
+function get_status ( $max, $cur, $warn, $crit ) {
+	if (($cur == 0 || $cur == -2) && $warn <= 0 && $crit <= 0) {
+		return 0;
+	} else if ( $cur > 0 && $max > 0 ) {
+		$status = $cur/$max;
+		if ( $status > 1 || $status < 0 ) {
+			return 3;
+		} else if ( $status > $warn ) {
+			return 0;
+		} else if ( $status > $crit ) {
+			return 1;
+		} else {
+			return 2;
+		}
+	} else {
+		if ( $cur == -3 ) {
+			return 0;
+	        //Ricoh printers use -100 value to indicate 20%-1% or 10%-1% remaining toner
+        	} else if ( $cur == -2 || $cur == -100 ) {
+            		return 1;
+		} else if ( $cur == 0 ) {
+			return 2;
+		} else {
+			return 3;
+		}
+	}	
+}
+
+function nagios_return ( $return, $str, $perfdata = array() ) {
+	$str = preg_replace ( '/ +/', ' ', $str ); // Replace multiple whitespaces
+
+	switch ( $return ) {
+		case 0:
+			echo 'OK - '.$str;
+		break;
+		case 1:
+			echo 'Warning - '.$str;
+		break;
+		case 2:
+			echo 'Critical - '.$str;
+		break;
+		case 3:
+			echo 'UNKNOWN - '.$str;
+		break;
+	}
+	if ( is_array ( $perfdata ) && count ( $perfdata ) > 0 ) {
+		echo " | ";
+		foreach ( $perfdata as $name => $perf ) {
+			$str = $name."=".$perf['value'];
+			$str .= ";";
+			if ( isset ( $perf['warn'] ) )
+				$str .= $perf['warn'];
+			$str .= ";";
+			if ( isset ( $perf['crit'] ) )
+				$str .= $perf['crit'];
+			$str .= ";";
+			if ( isset ( $perf['min'] ) )
+				$str .= $perf['min'];
+			$str .= ";";
+			if ( isset ( $perf['max'] ) )
+				$str .= $perf['max'];
+			$str = preg_replace ( '@(;+)$@', ';', $str );
+			echo $str." ";
+		}
+	}
+	exit($return);
+}
+
+function snmp_walk($oid) {
+	global $ip, $community, $snmpversion;
+	if ( $snmpversion == 3 ) {
+		// snmp3_walk ( string $host , string $sec_name , string $sec_level , string $auth_protocol , string $auth_passphrase , string $priv_protocol , string $priv_passphrase , string $object_id )
+		$value = @snmp3_walk($ip, $sec_name ,$sec_level ,$auth_protocol ,$auth_passphrase ,$priv_protocol ,$priv_passphrase, $oid);
+	} else if ( $snmpversion == 'v2c' ) {
+		$value = @snmp2_walk($ip, $community, $oid);
+	} else {
+		$value = @snmpwalkoid($ip, $community, $oid);
+	}
+
+	return $value;
+}
+
+
+
+function snmp_get($oid) {
+	global $ip, $community, $snmpversion;
+	if ( $snmpversion == 3 ) {
+		// snmp3_get ( string $host , string $sec_name , string $sec_level , string $auth_protocol , string $auth_passphrase , string $priv_protocol , string $priv_passphrase , string $object_id )
+		$value = @snmp3_get($ip, $sec_name ,$sec_level ,$auth_protocol ,$auth_passphrase ,$priv_protocol ,$priv_passphrase, $oid);
+	} else if ( $snmpversion == 'v2c' ) {
+		$value = @snmp2_get($ip, $community, $oid);
+	} else {
+		$value = @snmpget($ip, $community, $oid);
+	}
+
+	return $value;
+}
+
+function snmp_set($oid, $type, $value) {
+	global $ip, $community, $snmpversion;
+
+	if ( $snmpversion == 3 ) {
+		//  snmp3_set ( string $host , string $sec_name , string $sec_level , string $auth_protocol , string $auth_passphrase , string $priv_protocol , string $priv_passphrase , string $object_id , string $type , string $value )
+		$returnValue = snmp3_set($ip, $sec_name ,$sec_level ,$auth_protocol ,$auth_passphrase ,$priv_protocol,$priv_passphrase, $oid, $type, $value);
+	} else if ( $snmpversion == 'v2c' ) {
+		$returnValue = snmp2_set($ip, $community, $oid, $type, $value);
+	} else {
+		$returnValue = snmpset($ip, $community, $oid, $type, $value);
+	}
+
+	return $value;
+}
+
+if(!extension_loaded("snmp")) {
+        if (!dl("snmp.so")) {
+                echo "PHP SNMP extension could not be loaded...please check if it's installed!";
+                exit ( 3 );
+        }
+}
+
+snmp_set_quick_print ( true );
+snmp_set_valueretrieval(SNMP_VALUE_PLAIN);
+
+if ( !$_SERVER['argv'][1] || !$_SERVER['argv'][2] || !$_SERVER['argv'][3] || !$_SERVER['argv'][4]) {
+    	help();
+    	exit(3);
+} else {	
+    	$ip = $_SERVER['argv'][1];
+    	$community = $_SERVER['argv'][2];
+	if ( $_SERVER['argv'][3] != 3 ) {
+		$snmpversion = $_SERVER['argv'][3];
+	} else {
+		echo "Sorry, SNMP V3 currently not supported. Valid values: 1, v2c\n";
+		help();
+		exit(3);
+	}
+	$command = $_SERVER['argv'][4];
+    
+}
+
+
+switch ( $command ) {
+	case 'pagecount':
+	case 'counter':
+	case 'count':
+		if ( $_SERVER['argc'] < 6 )
+			nagios_return ( 3, "Too few parameter!" );
+
+		$num = (int) $_SERVER['argv'][5];
+
+		if ( $num == 1 ) {	// For printer without privat mib
+			$count = snmp_get( '.1.3.6.1.2.1.43.10.2.1.4.1.1');
+			$name = 'Total';
+		} else {
+			$name = snmp_get( '.1.3.6.1.4.1.367.3.2.1.2.19.5.1.5.'.$num);
+			$count = snmp_get( '.1.3.6.1.4.1.367.3.2.1.2.19.5.1.9.'.$num);
+		}
+
+		if ( $name === FALSE || $count === FALSE )
+			nagios_return ( 3, "Counter ".$num." does not exist!" );
+
+		nagios_return ( 0, $name.": ".$count, array ( 'pagecount' => array ( 'value' => $count ) ) );
+	break;
+	case 'toner':
+	case 'toner/ink':
+	case 'ink':
+		if ( $_SERVER['argc'] < 6 )
+			nagios_return ( 3, "Too few parameter!" );
+
+		$num = (int) $_SERVER['argv'][5];
+		$warn = $_SERVER['argc']>6?(float)$_SERVER['argv'][6]:0.2;
+		$crit = $_SERVER['argc']>7?(float)$_SERVER['argv'][7]:0.0;
+
+		$name = snmp_get('.1.3.6.1.2.1.43.11.1.1.6.1.'.$num );
+		$max = snmp_get('.1.3.6.1.2.1.43.11.1.1.8.1.'.$num );
+		$cur = snmp_get('.1.3.6.1.2.1.43.11.1.1.9.1.'.$num );
+
+		// Quirk for broken printer
+		$max = $_SERVER['argc']>8?(float)$_SERVER['argv'][8]:$max;
+
+		if ( $name === FALSE || $max === FALSE || $cur === FALSE )
+			nagios_return ( 3, "Toner/Ink ".$num." does not exist!" );
+
+		$str = $name;
+		if ( $cur >= 0 && $max > 0 ) {
+			$status = $cur/$max;
+			$str .= ' '.sprintf ( '%2d', $status*100 ).'% ('.$cur.' of '.$max.' left)';
+			$perf = array ( 'toner' => array ( 'value' => $cur, 'warn' => $warn*$max,'crit' => $crit*$max, 'min' => 0, 'max' => $max ) );
+		} else {
+			$perf = array();
+		}
+		nagios_return ( get_status ( $max, $cur, $warn, $crit ), $str, $perf );
+
+	break;
+	case 'toner_kyocera_monochrome':
+		       
+	        if ( $_SERVER['argc'] < 5 )
+	            nagios_return ( 3, "Too few parameter!" );
+	
+	        $warn = $_SERVER['argc']>5?(float)$_SERVER['argv'][5]:0.10;
+	        $crit = $_SERVER['argc']>6?(float)$_SERVER['argv'][6]:0.05;
+	
+	        $name = snmp_get( '.1.3.6.1.2.1.43.11.1.1.6.1.1' );
+	        $cur = snmp_get( '.1.3.6.1.2.1.43.11.1.1.9.1.1');
+		$max = snmp_get( '.1.3.6.1.2.1.43.11.1.1.8.1.1');
+	
+	        if ( $name === FALSE || $cur === FALSE || $max === FALSE )
+	            	nagios_return ( 3, "Toner/Ink does not exist!" );
+	           
+	        if ( $cur == -2 )
+	            	nagios_return ( 3, "Toner/Ink {$name} no original, no data supplied" );
+	
+	        if ( $cur == 0 )
+			nagios_return ( 2, "Toner/Ink {$name} empty" );
+	
+	        if ( $cur > 0 ) {
+			$percent = ($cur * 100 ) / $max;
+	            	$str = "Toner: " . $name . " left {$cur}/${max} ({$percent}%)";
+	            	$perf = array ( 'toner' => array ( 'value' => $percent, 'warn' => $warn, 'crit' => $crit, 'min' => 0, 'max' => $max ) );
+		} else {
+	            	$perf = array();
+	        }
+	        nagios_return ( get_status ( $max, $cur, $warn, $crit ), $str, $perf );
+
+	break;
+    	case 'toner_ricoh_monochrome':
+	        if ( $_SERVER['argc'] < 6 )
+	            nagios_return ( 3, "Too few parameter!" );
+	
+	        $num = (int) $_SERVER['argv'][5];
+	        $warn = $_SERVER['argc']>6?(float)$_SERVER['argv'][6]:-100;
+	        $crit = $_SERVER['argc']>7?(float)$_SERVER['argv'][7]:0;
+	
+	        $name = snmp_get('.1.3.6.1.4.1.367.3.2.1.2.24.1.1.3.'.$num );
+	        $cur = snmp_get('.1.3.6.1.4.1.367.3.2.1.2.24.1.1.5.'.$num );
+	        $max = -3;
+	
+	        if ( $name === FALSE || $cur === FALSE )
+	            	nagios_return ( 3, "Toner/Ink ".$num." does not exist!" );
+	           
+	        if ( $cur == -2 )
+	            	nagios_return ( 3, "Toner/Ink ".$num." is no original, no data supplied" );
+	
+	        if ( $cur == 0 )
+	        	nagios_return ( 2, "Toner/Ink ".$num." empty" );
+	
+	        if ( $cur == -3 || $cur == -100) {
+	            $status = $cur;
+	            if ( $cur == -3) { $str = 'More than 10% remaining'; }
+	            //Value -100 has to be added in function get_status
+	            if ( $cur == -100) { $str = '10% - 1% remaining'; }
+	            $perf = array ( 'toner' => array ( 'value' => $cur, 'warn' => $warn, 'crit' => $crit, 'min' => 0, 'max' => $max ) );
+	        } else {
+	            $perf = array();
+	        }
+	        nagios_return ( get_status ( $max, $cur, $warn, $crit ), $str, $perf );
+	break;
+	case 'toner_ricoh_color':
+	       
+	        if ( $_SERVER['argc'] < 6 )
+	            nagios_return ( 3, "Too few parameter!" );
+	
+	        $num = (int) $_SERVER['argv'][5];
+	        $warn = $_SERVER['argc']>6?(float)$_SERVER['argv'][6]:-100;
+	        $crit = $_SERVER['argc']>7?(float)$_SERVER['argv'][7]:0;
+	
+	        $name = snmp_get( '.1.3.6.1.4.1.367.3.2.1.2.24.1.1.3.'.$num );
+	        $cur = snmp_get( '.1.3.6.1.4.1.367.3.2.1.2.24.1.1.5.'.$num );
+	        $max = 100;
+	
+	        if ( $name === FALSE || $cur === FALSE )
+	            	nagios_return ( 3, "Toner/Ink ".$num." does not exist!" );
+	           
+	        if ( $cur == -2 )
+	            	nagios_return ( 3, "Toner/Ink ".$num." is no original, no data supplied" );
+	
+	        if ( $cur == 0 )
+			nagios_return ( 2, "Toner/Ink ".$num." empty" );
+	
+	        if ( $cur > 0 || $cur == -100) {
+	            $status = $cur;
+	            if ( $cur > 0) { $str = 'Left '.$cur.'% of '.$name.''; }
+	            //Value -100 has to be added in function get_status
+	            if ( $cur == -100) { $str = 'Less than 20% of '.$name.' remaining'; }
+	            $perf = array ( 'toner' => array ( 'value' => $cur, 'warn' => $warn, 'crit' => $crit, 'min' => 0, 'max' => $max ) );
+	        } else {
+	            $perf = array();
+	        }
+	        nagios_return ( get_status ( $max, $cur, $warn, $crit ), $str, $perf );
+
+	    break;
+	case 'tray':
+	case 'paper':
+		if ( $_SERVER['argc'] < 6 )
+			nagios_return ( 3, "Too few parameter!" );
+
+		$num = (int) $_SERVER['argv'][5];
+		$warn = $_SERVER['argc']>6?(float)$_SERVER['argv'][6]:0.2;
+		$crit = $_SERVER['argc']>7?(float)$_SERVER['argv'][7]:0.0;
+
+		$name1 = snmp_get( '.1.3.6.1.2.1.43.8.2.1.13.1.'.$num );
+		$name2 = snmp_get( '.1.3.6.1.2.1.43.8.2.1.18.1.'.$num );
+		$max = snmp_get( '.1.3.6.1.2.1.43.8.2.1.9.1.'.$num );
+		$cur = snmp_get( '.1.3.6.1.2.1.43.8.2.1.10.1.'.$num );
+
+		$name = $name1 === FALSE ? $name2 : $name1;
+		if ( $name === FALSE || $max === FALSE || $cur === FALSE )
+			nagios_return ( 3, "Tray ".$num." does not exist!" );
+
+		$str = $name;
+		if ( $cur >= 0 && $max > 0 ) {
+			$status = $cur/$max;
+			$str .= ' '.sprintf ( '%2d', $status*100 ).'% ('.$cur.' of '.$max.' left)';
+			$perf = array ( 'paper' => array ( 'value' => $cur, 'warn' => $warn*$max, 'crit' => $crit*$max, 'min' => 0, 'max' => $max ) );
+		} else {
+			$perf = array();
+		}
+		nagios_return ( get_status ( $max, $cur, $warn, $crit ), $str, $perf );
+	break;
+	case 'parts':
+		if ( $_SERVER['argc'] < 6 )
+			nagios_return ( 3, "Too few parameter!" );
+
+		$num = (int) $_SERVER['argv'][5];
+
+		$name = snmp_get( '.1.3.6.1.2.1.43.6.1.1.2.1.'.$num );
+		$status = snmp_get( '.1.3.6.1.2.1.43.6.1.1.3.1.'.$num );
+
+		if ( $name === FALSE || $status === FALSE )
+			nagios_return ( 3, "Part ".$num." does not exist!" );
+
+		if ( $status == 4 ) {
+			$ret = 0;
+		} else if ( $status == 3 ) {
+			$ret = 1;
+		} else {
+			$ret = 2;
+		}
+		$perf = array ( 'part' => array ( 'value' => $status));
+		nagios_return ( $ret, $name." Status=".$status, $perf);
+
+	break;
+	case 'hardware':
+		if ( $_SERVER['argc'] < 6 )
+			nagios_return ( 3, "Too few parameter!" );
+
+		$num = (int) $_SERVER['argv'][5];
+
+		$name = snmp_get( '.1.3.6.1.2.1.25.3.2.1.3.'.$num );
+		$status = snmp_get( '.1.3.6.1.2.1.25.3.2.1.5.'.$num );
+		$value = snmp_get( '.1.3.6.1.2.1.25.3.2.1.6.'.$num );
+		$perf = array ( 'data' => array ( 'value' => $value ) );
+
+		if ( $name === FALSE || $status === FALSE )
+			nagios_return ( 3, "Hardware ".$num." does not exist!" );
+
+		if ( $status == 1 || $status == 5 ) {
+			$ret = 2;
+		} else if ( $status == 3 || $status == 4 ) {
+			$ret = 1;
+		} else if ( $status == 2 ) {
+			$ret = 0;
+		} else {
+			$ret = 3;
+		}
+
+		nagios_return ( $ret, $name." Status=".$status, $perf );
+	break;
+	case 'alerts':
+/**
+ * Code is not always correct but ok most times
+ * Servity is often strange
+ * Training is most times ok
+ *
+ * So: Every message is warning except some codes.
+ *
+ * If servity is critical(3) then its critical
+ * If Training is trained(4) or fieldservice(5) its critical
+ * Selected codes are critical
+ * 
+ * Please send feedback how this works for your printers to jk@ciphron.de
+ */
+		//$critical_codes = array ( 8, 9, 11, 13, 21, 22, 26, 28, 30, 32, 33, 34, 901, 1101, 1114, 1115, 1301 );
+		$critical_codes = array ( 8, 1101, 1102, 1112, 1114, 1115 );
+		$ok_codes = array (  4, 6, 7, 19, 20, 23, 24, 25, 27, 35, 36, 37, 38, 502, 503, 504, 505, 506, 507, 802, 803, 804, 805, 806, 807, 808, 809, 810, 1001, 1002, 1005, 1106, 1107, 1108, 1111, 1113, 1302, 1304, 1501, 1502, 1503, 1504, 1505, 1506, 1509 );
+		$location_ignore_codes = array ( 10003, 10033, 10034 );
+		$location_ok_codes = array ( 13100, 13200, 13300, 13400, 13500 );
+		$ignore_codes = array ();
+
+		if ( $_SERVER['argc'] < 5 )
+			nagios_return ( 3, "Too few parameter!" );
+
+		$rawdata = snmp_walk ( '.1.3.6.1.2.1.43.18.1.1' );
+		if ( $rawdata === FALSE || !is_array ( $rawdata ) ) 
+			nagios_return ( 3, "Could not get data" );
+
+		$display = '';
+		$console = snmp_walk ( '.1.3.6.1.2.1.43.16' );
+		if ( $console !== FALSE || is_array ( $str ) ) {
+			foreach ( $console as $line ) {
+				$display .= $line." ";
+			}
+		}
+
+		if ( count ( $rawdata ) == 0 )
+			nagios_return ( 0, $display );
+
+		$mydata = array();
+		foreach ( $rawdata as $key => $val ) {
+				
+            if ( !(preg_match ( "@SNMPv2-SMI::mib-2.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match ) || preg_match ( "@iso.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match )))
+				nagios_return ( 3, "Internal error" );
+
+			$mydata[(int)$match['index']][(int)$match['num']] = $val;
+		}
+		$str = '';
+		$ret = 0;
+
+		foreach ( $mydata as $msg ) {
+			$location = (int) $msg[6];
+			$code = (int) $msg[7];
+
+			if ( $code == 1 && $location == 0 && preg_match ( '/{(\d+)}/', $msg[8], $match ) ) {
+				$location = (int) $match[1];
+			}
+
+			// Skip really unimportant messages (like energysaving)
+			if ( in_array ( $location, $location_ignore_codes ) ||
+				 in_array ( $code, $ignore_codes ) ) 
+				continue;
+
+			$str .= $msg[8]."(".trim($msg[1])." ".trim($msg[2])." ".trim($msg[3])." ".trim($msg[4])." ".trim($msg[5])." ".trim($msg[6])." ".$code.") ";
+			// dont escalate those messages 
+			if ( ( $code > 0 && in_array($code, $ok_codes) ) ||
+			 ( $location > 0 && in_array ( $location, $location_ok_codes ) ) )
+				continue;
+			if ( $code > 0 && in_array($code, $critical_codes) ) {
+				$ret = 2;
+			} else {
+				$ret = max ( $ret, 1 );
+			}
+		}
+
+		// If there is no message text (Kyocera) or all messages were filtered show display
+		if ( strlen ( trim ( $str ) ) < 2 )
+			$str = $display;
+
+		nagios_return ( $ret, $str );
+	break;
+	case 'accounting': 
+		if ( $_SERVER['argc'] < 7 )
+			nagios_return ( 3, "Too few parameter!" );
+
+		$pw = $_SERVER['argv'][5];
+		$num = (int) $_SERVER['argv'][6];
+		$warn = $_SERVER['argc']>7?(float)$_SERVER['argv'][7]:0.2;
+
+    		snmp_set ( '.1.3.6.1.4.1.1347.42.1.2.1.1.1.2.1', 's', $pw );
+	    	$name = snmp_get ( '.1.3.6.1.4.1.1347.42.1.2.1.2.1.2.1.'.$num );
+    		snmp_set ( '.1.3.6.1.4.1.1347.42.1.2.1.1.1.2.1', 's', $pw );
+	    	$count = snmp_get ( '.1.3.6.1.4.1.1347.42.1.1.1.1.3.1.'.$num.'.1' );
+    		snmp_set ( '.1.3.6.1.4.1.1347.42.1.2.1.1.1.2.1', 's', $pw );
+		$limit = snmp_get ( '.1.3.6.1.4.1.1347.42.1.1.1.1.6.1.'.$num.'.1' );
+
+		if ( $name === FALSE || $count === FALSE || $limit === FALSE ) 
+			nagios_return ( 3, "Could not get data" );
+
+		$perf = array ( 'pages' => array ( 'value' => $count,  'warn' => $limit*(1-$warn), 'crit' => $limit, 'min' => 0, 'max' => $limit>0?$limit:NULL ) );
+
+		if ( $limit <= 0 ) 
+			nagios_return ( $ret, $name."=".$count, $perf );
+
+		if ( $count >= $limit ) {
+			$ret = 2;
+		} else if ( $count >= $limit * (1-$warn) ) {
+			$ret = 1;
+		} else {
+			$ret = 0;
+		}
+
+		nagios_return ( $ret, $name."=".$count." (Limit: ".$limit.")", $perf );
+	break;
+	case 'help':
+	case '--help':
+	case '-h':
+	default:
+		help();
+		exit(3);
+	break;
+}
