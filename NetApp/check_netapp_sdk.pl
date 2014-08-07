@@ -274,7 +274,7 @@ sub check_lun {
 		$output = $s->invoke( "lun-list-info");
 	}
 	else {
-		$output = $s->invoke( "lun-list-info", "lun", $name );
+		$output = $s->invoke( "lun-list-info", "path", $name );
 	}
 
 	if ($output->results_status() eq "failed"){
