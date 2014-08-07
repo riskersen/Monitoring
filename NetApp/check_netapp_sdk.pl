@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 #-------------------------------------------
 # Author: Oliver Skibbe
-# Date: 2014-07-31
+# Date: 2014-08-06
 # Purpose: Check Netapp 
 #			- Volume size (+ perf)
 #			- LUN size, alignment, online (+ perf)
@@ -12,7 +12,6 @@
 #			- System info
 #			- Shelf state
 # TODO
-#			- update POD
 #			- diagnosis
 #			- samba service?
 #			- Performance data
@@ -30,14 +29,15 @@ use Data::Dumper;										# Debugging output
 use File::Basename;										# Basename of plugin
 use Getopt::Long qw(:config no_ignore_case bundling);	# Get options
 
-die pod2usage(
-	-verbose => 2
+die pod2usage( -message => "UNKNOWN: no arguments given",
+	-exitval => 3,
+	-verbose => 1
 ) unless $ARGV[0];
 
-my $VERSION = '0.8.5';
+my $VERSION = '0.7.5';
 my $PROGNAME = basename($0);
 my $np = Nagios::Plugin->new(
-	version 	=> $VERSION,
+	version 	=> "0.7.5",
 	plugin		=> $PROGNAME,
 	shortname 	=> uc($PROGNAME)	
 );
@@ -59,6 +59,7 @@ my $crit = 90;
 my $timeout = 30;
 my $debug = 0;
 my $help = 0;
+my $full_help = 0;
 my $no_perfdata = 0;
 my $wafl_reserve = 1.03; # netapp wafl fs reserve in volume
 
@@ -95,9 +96,6 @@ if ( $command =~ /check-volume/ ) {
 } elsif ( $command =~ /check-shelf/ ) {
 	%exit_hash = check_shelf();
 } elsif ( $command =~ /check-license/ ) {
-	# warn / crit seconds
-	$warn = 5184000; # warning 60 days left
-	$crit = 2592000; # critical 30 days left
 	%exit_hash = check_license();
 } else {
 	$exit_hash{exit_msg} = "System-Name: " . $netapp{name} . " System-ID: " . $netapp{id} . " Model: " . $netapp{model} . " Serial: " . $netapp{serial} . " Version: " . $netapp{version};
@@ -144,7 +142,6 @@ sub init_netapp {
 }
 
 sub get_netapp_info {
-	my %exit_hash;
 	
 	# get system info
 	my $output = $s->invoke( "system-get-info" );
@@ -176,11 +173,7 @@ sub check_volume {
 
 	# variables
 	my $output;
-	my %volumes;
-	my %exit_hash;
-	$exit_hash{exit_msg} = "";
-	$exit_hash{exit_state} = OK;
-	
+	my %volumes;	
 	my $counter = 0;
 	my $vol;
 
@@ -272,11 +265,7 @@ sub check_lun {
 
 	# variables
 	my $output;
-	my %luns;
-	my %exit_hash;
-	$exit_hash{exit_msg} = "";
-	$exit_hash{exit_state} = OK;
-	
+	my %luns;	
 	my $counter = 0;
 	my $lun;
 
@@ -374,15 +363,11 @@ sub check_lun {
 	return (%exit_hash);
 }
 
-# check aggr for size and print them with perf data
+# check shelf for size and print them with perf data
 sub check_shelf {
 
 	# variables
-	my $output;
-	my %exit_hash;
-	$exit_hash{exit_msg} = "";
-	$exit_hash{exit_state} = OK;
-	
+	my $output;	
 	my $counter = 0;
 	my $shelf;
 	my $cmd = "storage-shelf-environment-list-info";
@@ -571,11 +556,7 @@ sub check_aggr {
 
 	# variables
 	my $output;
-	my %aggrs;
-	my %exit_hash;
-	$exit_hash{exit_msg} = "";
-	$exit_hash{exit_state} = OK;
-	
+	my %aggrs;	
 	my $counter = 0;
 	my $aggr;
 
@@ -588,7 +569,7 @@ sub check_aggr {
 	}
 
 	if ($output->results_status() eq "failed"){
-		$np->nagios_exit(CRITICAL, "Aggr-List-info failed: " . $output->results_reason());
+		$np->nagios_exit(CRITICAL, "aggr-list-info failed: " . $output->results_reason());
 	}
 
 	my $aggr_info = $output->child_get("aggregates");
@@ -698,9 +679,7 @@ sub check_aggr {
 sub check_cluster {
 
 	# variables
-	my %exit_hash;
 	$exit_hash{exit_msg} = "Cluster is fine! ";
-	$exit_hash{exit_state} = OK;
 	
 	my $cf_hwassist_local_code = OK;
 	my $cf_hwassist_partner_code = OK;
@@ -764,11 +743,6 @@ sub check_snapmirror {
 	# variables
 	my $output;
 	my %snapmirror;
-	my %exit_hash;
-	# defaults
-	$exit_hash{exit_state} = OK;
-	$exit_hash{exit_msg} = "";
-	
 	my $counter = 0;
 	my $snap;
 	my @snap_transfer_type = ("scheduled", "retry", "resync", "update", "initialize", "store", "retrieve");
@@ -819,7 +793,7 @@ sub check_snapmirror {
 		# split uom and size for perfdata
 		my @snap_xfer_size = split(' ', $snap_last_xfer_size);
 				
-		# disable perfdata with --no-perfdata
+		# disable perfdata with -p
 		if ( ! $no_perfdata ) {
 			# perfdata: actual size
 			$np->add_perfdata( 
@@ -831,11 +805,11 @@ sub check_snapmirror {
 				label		=> $snap_perf_name . "_lag_time",
 				value 		=> $snap_lag_time,
 				uom 		=> "s",
-				#threshold 	=> $np->threshold,
+				threshold 	=> $np->threshold,
 			);
 		}
 		
-		#my $code = $np->check_threshold(check => $snap_lag_time);
+		my $snap_lag_code = ( $snap_lag_time > 0 ) ? $np->check_threshold(check => $snap_lag_time) : OK;
 		$snap_lag_time = timeconv($snap_lag_time);		
 		
 		# critical if xfer err is present
@@ -844,20 +818,20 @@ sub check_snapmirror {
 		# set exit_state to crit if current exit_state is OK or warning
 		# if exit_state is OK and code is Warning => set warning
 		# if exit_state is CRITICAL and code is warning -> add warning msg
-		if ( $code == CRITICAL )  {
+		if ( $code == CRITICAL || $snap_lag_code == CRITICAL)  {
 			# we catched a critical return value
 			$exit_hash{exit_msg} .= "C->";
 			$exit_hash{exit_state} = CRITICAL;
 			$counter++;
-		} elsif ( $code == WARNING ) { ### currently not in use, maybe later for lag time
+		} elsif ( $code == WARNING || $snap_lag_code == WARNING ) { 
 			# if warning is catched, but critical is already set, add warning msg and warning code
 			$exit_hash{exit_msg} .= "W->";
 			$exit_hash{exit_state} = WARNING if ( $exit_hash{exit_state} == OK );	
 			$counter++;
 		} # end code check
 		
-		$exit_hash{exit_msg} .= $snap_name . ": Lag-time: " . $snap_lag_time . " " if ($code != OK);
-		$exit_hash{exit_msg} .= "Error: " . $snap_cnt_xfer_err . " " if ($code != OK);
+		$exit_hash{exit_msg} .= $snap_name . ": Lag-time: " . $snap_lag_time . " " if ($exit_hash{exit_state} != OK);
+		$exit_hash{exit_msg} .= "Error: " . $snap_cnt_xfer_err . " " if ($exit_hash{exit_state} != OK);
 		
 	}
 	my $exit_msg_part = $counter > 0 ? ": " : "";
@@ -869,16 +843,10 @@ sub check_license {
 
 	# variables
 	my $output;
-	my %licenses;
-	
-	# warn / crit seconds
+	my %licenses;	
 	my $warning_expiration = $warn; # warning 60 days left
 	my $critical_expiration = $crit; # critical 30 days left
-	
-	my %exit_hash;
-	$exit_hash{exit_state} = OK;
-	$exit_hash{exit_msg} = "";
-	
+		
 	my $counter = 0;
 	my $max_counter = 0;
 	my $timestamp = time();
@@ -906,7 +874,7 @@ sub check_license {
 		my $license_expiration_timestamp = $license->child_get_int("expiration-timestamp") ? $license->child_get_int("expiration-timestamp") : 0;
 		my $license_installation_timestamp = $license->child_get_int("installation-timestamp") ? $license->child_get_int("installation-timestamp") : 0;
 		
-		next if ( $license_auto_enabled || $license_is_demo );	# skip if demo license or auto enabled license
+		next if ( $license_auto_enabled eq "true" || $license_is_demo eq "true" || $license_expiration_timestamp == 0 );	# skip if demo license or auto enabled license or non expiry
 		
 		my $expiration_seconds = ( $license_expiration_timestamp > 0 ) ? $license_expiration_timestamp - $timestamp : 0; # seconds till expiration  (negative)
 		
@@ -941,7 +909,7 @@ sub check_license {
 }
 
 sub parse_args {
-        pod2usage(-message => "UNKNOWN: No Arguments given", -exitval => 3, -verbose => 0) if ( !@ARGV );
+        pod2usage(-message => "UNKNOWN: No Arguments given", -exitval => 3, -verbose => 1) if ( !@ARGV );
 
         GetOptions(
                 'host|H=s'      	=> \$host,
@@ -956,9 +924,10 @@ sub parse_args {
                 'critical|c:i'  	=> \$crit,
                 'debug|d:i'  		=> \$debug,
                 'help|?!'       	=> \$help,
-        ) or pod2usage(-exitval => 3, -verbose => 0);
+                'help|h!'       	=> \$help,
+        ) or pod2usage(-exitval => 3, -verbose => 1);
 
-        pod2usage(-exitval => 3, -verbose => 2) if $help;
+        pod2usage(-exitval => 3, -verbose => 1) if $help;
 
         return ($host, $user, $password, $command, $name, $timeout, $dossl, $warn, $crit, $no_perfdata, $debug);
 }
@@ -996,15 +965,15 @@ check_netapp_sdk.pl - NetApp Plugin via Data ONTAP
 
 =head1 SYNOPSIS
 
-=item S<check_netapp_sdk.pl -H -U -P [-S|-w|-c|-t|-d|-?]>
+S<check_netapp_sdk.pl -H -U -P [-S|-w|-c|-t|-d|-?]>
 
-=head1 ARGUMENTS	
+=head1 OPTIONS	
 	
 	-H --host 	STRING or IPADDRESS of Filer	
 	-U --username 	STRING Admin User	
 	-P --password 	STRING Admin Password	
 	-C --command 	STRING command name, defaults to version info
-	-n --name	STRING addition to some commands, e.g. to specify volume name
+	-n --name	STRING addition to some commands, e.g. to specify volume/lun/... name
 	-S --ssl 	activates SSL HTTPS Transport	
 	-w --warning 	Warning threshold, depends on command, defaults to 80	
 	-c --critical 	Critical threshold, depends on command, defaults to 90
@@ -1012,14 +981,45 @@ check_netapp_sdk.pl - NetApp Plugin via Data ONTAP
 	-d --debug	Future: activates debug mode (more output)
 	-? --help	full help
 	
-=head2 COMMANDS
+	Possible commands:
 	
-	list-volumes [VOLUME_NAME] - List volumes and checks them against given thresholds, use -n to specify volume
+	check-volume [-n VOLUME_NAME] - List volumes use -n to specify volume
+		-> size in percent (-w/-c)
+	check-lun [-n LUN_NAME] - List LUNs, use -n to specify lun
+		-> size in percent (-w/-c)
+		-> misalignment results to warning
+		-> offline state and is mapped results to critical
+	check-snapmirror [-n SNAPMIRROR_NAME] - List snapmirrors, use -n to specify snapmirror
+		-> lag_time in seconds (-w/-c)
+		-> transfer error -> CRITICAL
+	check-aggr [-n AGGREGATE_NAME] - List aggregates, use -n to specify lun
+		-> size in percent (-w/-c)
+		-> mount state: warning on creating, mounting, unmounting, quiescing; ok on online consistent quiesced; critical for the rest!
+		-> mirror state: warning on 'CP count check in progress'; ok on mirrored, unmirrored; critical for the rest!
+		-> raid state: warning on resyncing, copying, growing, reconstruct; ok on normal, mirrored; critical for the rest
+		-> inconsistency results on critical
+	check-cluster - checks for cluster state
+		-> warning/critical on other state than connected
+		-> warning on inactive hwassist (if available)
+		-> interconnect state
+	check-shelf
+		-> critical on failed power-supply
+		-> critical on failed voltage sensor
+		-> critical on failed temp sensor
+		-> temperature (values provided by netapp, is needed due to different sensor locations)
+		-> shelf state : warning on informational, non_critical; ok on normal; critical for the rest!
+	check-license - checks license
+		-> expiry date (excludes demo, auto_enabled and non expiry lics)
+		
+	Dependencies
 
+	NetApp SDK
+	Nagios::Plugins
+	
 =head1 SEE ALSO
 
   NetApp ONTAP SDK
 
 =head1 COPYRIGHT
-
+	Oliver Skibbe (oliskibbe@gmail.com)
 =cut
