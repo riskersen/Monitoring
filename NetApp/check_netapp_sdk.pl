@@ -830,8 +830,8 @@ sub check_snapmirror {
 			$counter++;
 		} # end code check
 		
-		$exit_hash{exit_msg} .= $snap_name . ": Lag-time: " . $snap_lag_time . " " if ($exit_hash{exit_state} != OK);
-		$exit_hash{exit_msg} .= "Error: " . $snap_cnt_xfer_err . " " if ($exit_hash{exit_state} != OK);
+		$exit_hash{exit_msg} .= $snap_name . ": Lag-time: " . $snap_lag_time . " " if ($snap_lag_code != OK || $code != OK);
+		$exit_hash{exit_msg} .= "Error: " . $snap_cnt_xfer_err . " " if ($snap_lag_code != OK || $code != OK);
 		
 	}
 	my $exit_msg_part = $counter > 0 ? ": " : "";
