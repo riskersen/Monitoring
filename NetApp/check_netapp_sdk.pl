@@ -401,7 +401,7 @@ sub check_shelf {
 	my $shelf_infos = $output->child_get("shelf-environ-channel-list");
 	my $shelf_channel_infos = $shelf_infos->child_get("shelf-environ-channel-info");
 	
-	# number of shelves (not shelfes?)
+	# number of shelves
 	my $shelf_present = $shelf_channel_infos->child_get_string("shelves-present");
 	my $shelf_channel_failure = $shelf_channel_infos->child_get_string("is-shelf-channel-failure");
 	
@@ -547,7 +547,7 @@ sub check_shelf {
 	
 	# nicer output, adds a ": " if suspicious shelfs are found
 	my $exit_msg_part = $counter > 0 ? ":" : "";
-	$exit_hash{exit_msg} = $counter . "/" . $shelf_present . " suspicious shelfes found" . $exit_msg_part . "\n" . $exit_hash{exit_msg};
+	$exit_hash{exit_msg} = $counter . "/" . $shelf_present . " suspicious shelves found" . $exit_msg_part . "\n" . $exit_hash{exit_msg};
 	return (%exit_hash);
 }
 
