@@ -16,18 +16,25 @@
 #      - samba service?
 #      - Performance data
 #
+# Changelog:
+#      2014-08-06: Oliver Skibbe (https://github.com/riskersen):
+#        - first release
+#      2014-10-03: PLZ (https://github.com/plz):
+#        - Fixed typo
+#      2014-10-08: Oliver Skibbe (https://github.com/riskersen):
+#        - code cleanup, according to PBP (still not done yet)
+#        - fixed --help
 #-------------------------------------------
 
 use strict;
 use warnings;
 
 
-use lib "/usr/local/share/perl/5.14.2/NetApp";     # this has to be adjusted!
-use Nagios::Plugin;                    # Nagios helper functions
-use NaServer;                      # class for managing NetApp storage systems using ONTAPI(tm) APIs.
-use Pod::Usage;                     # Perl module that allows the programmer to use POD
-use Data::Dumper;                    # Debugging output
-use File::Basename;                    # Basename of plugin
+use lib "/usr/local/share/perl/5.14.2/NetApp";         # this has to be adjusted!
+use Nagios::Plugin;                                    # Nagios helper functions
+use NaServer;                                          # class for managing NetApp storage systems using ONTAPI(tm) APIs.
+use Pod::Usage;                                        # Perl module that allows the programmer to use POD
+use File::Basename;                                    # Basename of plugin
 use Getopt::Long qw(:config no_ignore_case bundling);  # Get options
 
 die pod2usage( -message => "UNKNOWN: no arguments given",
@@ -35,7 +42,7 @@ die pod2usage( -message => "UNKNOWN: no arguments given",
   -verbose => 1
 ) unless $ARGV[0];
 
-my $VERSION = '0.7.5';
+my $VERSION = '0.7.8';
 my $PROGNAME = basename($0);
 my $np = Nagios::Plugin->new(
   version   => $VERSION,
@@ -902,23 +909,21 @@ sub check_license {
 }
 
 sub parse_args {
-        pod2usage(-message => "UNKNOWN: No Arguments given", -exitval => 3, -verbose => 1) if ( !@ARGV );
-
         GetOptions(
                 'host|H=s'        => \$host,
                 'command|C=s'     => \$command,
-        'name|n:s'      => \$name,
+                'name|n:s'        => \$name,
                 'username|U=s'    => \$user,
                 'password|P=s'    => \$password,
-        'ssl|S:1'      => \$dossl,
-        'no-perfdata|p:1'  => \$no_perfdata,
-        'timeout|t:i'    => \$timeout,
+                'ssl|S:1'         => \$dossl,
+                'no-perfdata|p:1' => \$no_perfdata,
+                'timeout|t:i'     => \$timeout,
                 'warning|w:i'     => \$warn,
                 'critical|c:i'    => \$crit,
-                'debug|d:i'      => \$debug,
+                'debug|d:i'       => \$debug,
                 'help|?!'         => \$help,
                 'help|h!'         => \$help,
-        ) or pod2usage(-exitval => 3, -verbose => 1);
+        ) or pod2usage("Try '$0 --help' for more information.");
 
         pod2usage(-exitval => 3, -verbose => 1) if $help;
 
@@ -950,10 +955,8 @@ check_netapp_sdk.pl - NetApp Plugin via Data ONTAP
 
 =head1 SYNOPSIS
 
-S<check_netapp_sdk.pl -H -U -P [-S|-w|-c|-t|-d|-?]>
+check_netapp_sdk.pl -H -U -P [-S|-w|-c|-t|-d|-?]
 
-=head1 OPTIONS  
-  
   -H --host   STRING or IPADDRESS of Filer  
   -U --username   STRING Admin User  
   -P --password   STRING Admin Password  
