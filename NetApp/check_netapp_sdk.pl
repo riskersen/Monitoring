@@ -60,6 +60,7 @@ my %command_table = (
   'check-shelf'      => \&check_shelf,
   'check-volume'     => \&check_volume,
   'get-netapp-info'  => \&get_netapp_info,
+  'check-version'    => \&get_netapp_info,
 );
 
 my %netapp;
