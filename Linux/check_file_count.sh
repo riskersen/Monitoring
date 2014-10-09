@@ -75,27 +75,26 @@ if [ ! -d $path ] ; then
 	usage
 fi
 
-if [ $mountedpath ] ; then
-	mount $path
-	mountpoint -q $path
-	if [ $? -gt 0 ] ; then
-		echo "Path $path is not mounted correctly"
-		usage
-	fi
-fi
+#if [ $mountedpath ] ; then
+#	mount $path
+#	mountpoint -q $path
+#	if [ $? -gt 0 ] ; then
+#		echo "Path $path is not mounted correctly"
+#		usage
+#	fi
+#fi
 
 if [ $warning -gt $critical ] ; then
 	echo "Warning is greater then critical"
 	usage
 fi
-# sample which files should not be counted
-exclude="ok.bat|Thumbs.db|dies ist der richtige Pfad.txt|new  24.txt"
+exclude="ok.bat|intraConfig.mdb|Thumbs.db|dies ist der richtige Pfad.txt|new  24.txt"
 
 filecount=`find $path -maxdepth 1 -type f | grep -E -i -v "$exclude" | wc -l`
 oldestFile=`find $path -maxdepth 1 -type f -printf '%T@ %p\n' | grep -E -i -v "$exclude" |sort -k 1n | head -n 1`
-oldestFileDate=`echo $oldestFile | awk '{print $1}'`
+oldestFileDate=`echo $oldestFile | awk '{print $1}' | awk -F "." '{print $1}'`
 currentDate=`date +%s`
-oldestFile=`echo $oldestFile | awk '{print $2}'`
+oldestFile=`echo $oldestFile | awk '{print $2}' `
 oldestFileTime=$(($currentDate - $oldestFileDate))
 
 if [ $filecount -gt $critical ] ; then
