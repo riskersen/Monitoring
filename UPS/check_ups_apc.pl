@@ -143,6 +143,9 @@ elsif ($status == 1){
 elsif ($status == 2){
     print "CRITICAL - $returnstring|$perfdata\n";
 }
+elsif ($status == 3){
+    print "UNKNOWN - $returnstring|$perfdata\n";
+}
 else{
     print "No response from SNMP agent.\n";
 }
