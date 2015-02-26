@@ -17,6 +17,7 @@
 # Changelog 1.4.1 (2015-02-26) Oliver Skibbe (oliskibbe (at) gmail.com)
 #  - updated POD
 #  - fixed line 265: $help_serials[$#help_serials] construct
+#  - fixed snmp error check 
 #
 # This program is free software; you can redistribute it and/or 
 # modify it under the terms of the GNU General Public License 
@@ -77,7 +78,7 @@ if ( $version == 3 ) {
       );  # Open an SNMP connection...
 }
 
-if ( $error != "" ) {
+if ( $error ne "" ) {
   print "\n$error\n";
   exit(1);
 }
