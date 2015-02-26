@@ -9,11 +9,14 @@
 # Changelog:
 #  - initial release (cluster, cpu, memory, session support)
 #  - added vpn support, based on check_fortigate_vpn.pl: Copyright (c) 2009 Gerrit Doornenbal, g(dot)doornenbal(at)hccnet(dot)nl
-# Changelog (2015-02-26) Oliver Skibbe (oliskibbe (at) gmail.com)
+# Changelog 1.4 (2015-02-26) Oliver Skibbe (oliskibbe (at) gmail.com)
 #  - some code cleanup
 #  - whitespace fixes
 #  - added snmp debug
 #  - added SNMP V3 support
+# Changelog 1.4.1 (2015-02-26) Oliver Skibbe (oliskibbe (at) gmail.com)
+#  - updated POD
+#  - fixed line 265: $help_serials[$#help_serials] construct
 #
 # This program is free software; you can redistribute it and/or 
 # modify it under the terms of the GNU General Public License 
@@ -38,7 +41,7 @@ use Getopt::Long qw(:config no_ignore_case bundling);
 use Pod::Usage;
 
 my $script         = "check_fortigate.pl";
-my $script_version = "1.4";
+my $script_version = "1.4.1";
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode, 
@@ -262,7 +265,7 @@ sub get_cluster_state {
   }
 
   # Write an output string...
-  $string = $state . ": " . $curr_device . " (Master: " . $curr_serial . ", Slave: " . @help_serials[$#help_serials] . "): " . $string;
+  $string = $state . ": " . $curr_device . " (Master: " . $curr_serial . ", Slave: " . $help_serials[$#help_serials] . "): " . $string;
 
   return ($state, $string);
 } # end cluster state
