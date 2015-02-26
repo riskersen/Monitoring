@@ -403,7 +403,7 @@ sub parse_args
 
   GetOptions(
     'host|H=s'         => \$ip,
-    'port|P=s'         => \$port,
+    'port|P=i'         => \$port,
     'version|v:s'      => \$version,
     'community|C:s'    => \$community,
     'username|U:s'     => \$user_name,
@@ -422,13 +422,13 @@ sub parse_args
     'help|?!'          => \$help,
   ) or pod2usage(-exitval => 3, -verbose => 0);
 
-  pod2usage(-exitval => 3, -verbose => 2) if $help;
+  pod2usage(-exitval => 3, -verbose => 3) if $help;
 
     return (
     $ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
     $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot
-    ); 
-}    
+    );
+}
 
 __END__
 
@@ -437,6 +437,8 @@ __END__
 Check Fortinet FortiGate Appliances
 
 =head1 SYNOPSIS
+
+=over
 
 =item S<check_fortigate.pl -H -C -T [-w|-c|-S|-s|-R|-M|-V|-?]>
 
@@ -463,19 +465,62 @@ Options:
 
   -? --help Returns full help text
 
-  
+=back  
+
 =head1 OPTIONS
 
-=over 8
-   
-=item B<-H--host>
- 
-STRING or IPADDRESS - Check interface on the indicated host.
+=over
+
+=item B<-H|--host>
+
+STRING or IPADDRESS - Check interface on the indicated host
+
+=item B<-P|--port>
+
+INTEGER - SNMP Port on the indicated host, defaults to 161
+
+=item B<-v|--version>
+
+INTEGER - SNMP Version on the indicated host, possible values 1,2,3 and defaults to 2
+
+=back
+
+=head3 SNMP v3
+
+=over
+
+=item B<-A|--authpassword>
+
+STRING - authentication password
+
+=item B<-a|--authprotocol>
+
+STRING - authentication algorithm, defaults to sha
+
+=item B<-X|--privpassword>
+
+STRING - private password
+
+=item B<-x|--privprotocol>
+
+STRING - private algorithm, defaults to aes
+
+=back
+
+=head3 SNMP v1/v2c
+
+=over
 
 =item B<-C|--community>
 
-STRING - Community-String for SNMP
-   
+STRING - Community-String for SNMP, defaults to public only used with SNMP version 1 and 2
+
+=back
+
+=head3 Other
+
+=over
+
 =item B<-T|--type>
 
 STRING - CPU, MEM, Ses, VPN, net, Cluster
@@ -491,7 +536,7 @@ BOOL - Get values of slave
 =item B<-w|--warning>
 
 INTEGER - Warning threshold, applies to cpu, mem, session. 
-   
+
 =item B<-c|--critical>
 
 INTEGER - Critical threshold, applies to cpu, mem, session. 
@@ -511,10 +556,12 @@ STRING - VPN-Mode: both => IPSec & SSL/OpenVPN, ipsec => IPSec only, ssl => SSL/
 =back
 
 =head1 DESCRIPTION
-  
+
 This plugin checks Fortinet FortiGate devices via SNMP 
 
-=head2 From Web: 
+=head2 From Web
+
+=over 4
 
 =item 1. Select Network -> Interface -> Local interface
 
@@ -528,7 +575,9 @@ This plugin checks Fortinet FortiGate devices via SNMP
 
 =item 6. Configure for your needs, Traps are not required for this plugin!
 
-=head2 From CLI:
+=back
+
+=head2 From CLI
 
  config system interface
     edit "internal"
