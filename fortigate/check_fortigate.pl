@@ -1,9 +1,10 @@
 #!/usr/bin/perl
+# nagios: -epn
 # This  Plugin checks the cluster state of FortiGate
 # Tested on: FortiGate 100D / FortiGate 300C (both 5.0.3) 
 #
 # Author: Oliver Skibbe (oliskibbe (at) gmail.com)
-# Date: 2013-07-28
+# Date: 2015-02-26
 #
 # Changelog:
 #  - initial release (cluster, cpu, memory, session support)
