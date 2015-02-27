@@ -4,20 +4,23 @@
 # Tested on: FortiGate 100D / FortiGate 300C (both 5.0.3) 
 #
 # Author: Oliver Skibbe (oliskibbe (at) gmail.com)
-# Date: 2015-02-26
+# Date: 2015-02-27
 #
 # Changelog:
+# Release 1.0 (2013)
 #  - initial release (cluster, cpu, memory, session support)
 #  - added vpn support, based on check_fortigate_vpn.pl: Copyright (c) 2009 Gerrit Doornenbal, g(dot)doornenbal(at)hccnet(dot)nl
-# Changelog 1.4 (2015-02-26) Oliver Skibbe (oliskibbe (at) gmail.com)
+# Release 1.4 (2015-02-26) Oliver Skibbe (oliskibbe (at) gmail.com)
 #  - some code cleanup
 #  - whitespace fixes
 #  - added snmp debug
 #  - added SNMP V3 support
-# Changelog 1.4.1 (2015-02-26) Oliver Skibbe (oliskibbe (at) gmail.com)
+# Release 1.4.1 (2015-02-26) Oliver Skibbe (oliskibbe (at) gmail.com)
 #  - updated POD
 #  - fixed line 265: $help_serials[$#help_serials] construct
 #  - fixed snmp error check 
+# Release 1.4.1 (2015-02-26) Oliver Skibbe (oliskibbe (at) gmail.com)
+#  - removing any non digits in warn/crit 
 #
 # This program is free software; you can redistribute it and/or 
 # modify it under the terms of the GNU General Public License 
@@ -42,7 +45,7 @@ use Getopt::Long qw(:config no_ignore_case bundling);
 use Pod::Usage;
 
 my $script         = "check_fortigate.pl";
-my $script_version = "1.4.1";
+my $script_version = "1.4.2";
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode, 
@@ -419,14 +422,18 @@ sub parse_args
     'serial|S:s'       => \$pri_serial,
     'vpnmode|V:s'      => \$vpnmode,
     'mode|M:s'         => \$mode,
-    'warning|w:i'      => \$warn,
-    'critical|c:i'     => \$crit,
+    'warning|w:s'      => \$warn,
+    'critical|c:s'     => \$crit,
     'slave|s:1'        => \$slave,
     'reset|R:1'        => \$reset_file,
     'help|?!'          => \$help,
   ) or pod2usage(-exitval => 3, -verbose => 0);
 
   pod2usage(-exitval => 3, -verbose => 3) if $help;
+
+    # removing any non digits 
+    $warn =~ s/\D*(\d+)\D*/$1/g;
+    $crit =~ s/\D*(\d+)\D*/$1/g;
 
     return (
     $ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
