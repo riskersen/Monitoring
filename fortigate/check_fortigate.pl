@@ -4,7 +4,7 @@
 # Tested on: FortiGate 100D / FortiGate 300C (both 5.0.3) 
 #
 # Author: Oliver Skibbe (oliskibbe (at) gmail.com)
-# Date: 2015-02-27
+# Date: 2015-03-04
 #
 # Changelog:
 # Release 1.0 (2013)
@@ -21,6 +21,8 @@
 #  - fixed snmp error check 
 # Release 1.4.1 (2015-02-26) Oliver Skibbe (oliskibbe (at) gmail.com)
 #  - removing any non digits in warn/crit 
+# Release 1.4.2 (2015-03-04) Oliver Skibbe (oliskibbe (at) gmail.com)
+#  - removing any non digits in returning health value at sub get_health_value
 #
 # This program is free software; you can redistribute it and/or 
 # modify it under the terms of the GNU General Public License 
@@ -192,11 +194,14 @@ sub get_health_value {
   }
 
   $value = get_snmp_value($session, $oid);
+  # strip any leading or trailing non zeros
+  $value =~ s/\D*(\d+)\D*/$1/g;
 
-  if ( $value >= $crit . $UOM ) {
+
+  if ( $value >= $crit ) {
     $state = "CRITICAL";
     $string = $label . " is critical: " . $value . $UOM; 
-  } elsif ( $value >= $warn . $UOM ) {
+  } elsif ( $value >= $warn ) {
     $state = "WARNING";
     $string = $label . " is warning: " . $value . $UOM;
   } else {
