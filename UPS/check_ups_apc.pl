@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-
+# nagios -epn
 #    Copyright (C) 2004 Altinity Limited
 #    E: info@altinity.com    W: http://www.altinity.com/
 #    Modified by pierre.gremaud@bluewin.ch
@@ -19,9 +19,13 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program; if not, write to the Free Software
 #    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA    02111-1307    USA
+#
+# 2015-03-09: Oliver Skibbe oliver.skibbe (at) mdkn.de
+#	- disabled epn, leads to a warning with using mod_gearman
+#	- disabled warning for using given/when
+#	- fixed SNMP error comparison 
 # 2015-02-09: Oliver Skibbe oliver.skibbe (at) mdkn.de
 #	- added snmp v3 support
-# 
 # 2014-01-08: Alexander Rudolf alexander.rudolf (at) saxsys.de
 #	- added support for external temperature sensor (exttemp...)
 #         Hint: expecting the value unit is Celsius ('1'), if iemStatusProbeTempUnits.1
@@ -45,6 +49,7 @@ use Net::SNMP;
 use Getopt::Std;
 use Getopt::Long qw(:config no_ignore_case bundling);
 use feature qw/switch/;
+no if $] >= 5.018, 'warnings', "experimental::smartmatch";
 # DEBUGGING PURPOSE 
 #use Data::Dumper;
 
@@ -128,9 +133,9 @@ if ( $version == 3 ) {
 }
 
 
-if ( $e != "" ) {
-	print "\n$e\n";
-	exit(1);
+if ( $e ne "" ) {
+	print "CRITICAL: SNMP Error $e\n";
+	exit(2);
 }
 
 main();
