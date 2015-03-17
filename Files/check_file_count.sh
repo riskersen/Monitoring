@@ -106,7 +106,7 @@ if [ $mountedpath ] ; then
 fi
 
 if [ $warning -gt $critical ] ; then
-	echo "Warning is greater then critical"
+	echo "Warning is greater than critical"
 	usage
 fi
 
