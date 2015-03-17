@@ -1,8 +1,13 @@
 #!/bin/bash
 # Author: oliver.skibbe (at) mdkn.de
-# Date: 2013-10-30
+# Date: 2015-03-17
 # Purpose: return warning or critical if file count of specified path is higher then limits
 # Also checks if a path is a mounted path
+# Changelog:
+# 		- improved code
+#		- now supports include/exclude
+#		- updated usage
+#		- multiline output for found files (limited to 150)
 
 PROGNAME=`basename $0`
 PROGPATH=`echo $0 | sed -e 's,[\\/][^\\/][^\\/]*$,,'`
@@ -13,11 +18,17 @@ PROGPATH=`echo $0 | sed -e 's,[\\/][^\\/][^\\/]*$,,'`
 #critical=$3
 
 function usage () {
-	echo "`basename $0`: checks given path for file count
-Usage: `basename $0` -p path -w warning -c critical -m 1
--m => flag if path is a mounted path
+	echo -e "`basename $0`: checks given path for file count
+Usage: `basename $0` -p path -w warning -c critical -d max-depth -f filelist [-e|-m 1]
+-w\twarning count
+-c\tcritical count
+-p\tpath to monitor
+-m\tflag if path is a mounted path
+-f\tpipe separated list of files includes or excludes
+-e\texclude/include list of files flag
+-d\tmax-depth, how deep to dive into folders
 	"
-	exit 1
+	exit 3
 }
 
 function convertTime () {
@@ -46,7 +57,7 @@ function convertTime () {
 	oldestFileTime="{$day}d {$hour}h {$min}m {$sec}s"
 }
 
-while getopts ":m:p:w:c:" opt; do
+while getopts ":m:p:w:c:d:f:e:" opt; do
 	case $opt in
 	p)
 		path=$OPTARG
@@ -59,6 +70,15 @@ while getopts ":m:p:w:c:" opt; do
 		;;
 	m)
 		mountedpath=true
+		;;
+	e)
+		grepOpt="-v"
+		;;
+	d)
+		maxdepth=$OPTARG
+		;;
+	f)
+		filelist=$OPTARG
 		;;
 	\?)
 		echo "Option -$OPTARG is invalid!"
@@ -75,25 +95,35 @@ if [ ! -d $path ] ; then
 	usage
 fi
 
-#if [ $mountedpath ] ; then
-#	mount $path
-#	mountpoint -q $path
-#	if [ $? -gt 0 ] ; then
-#		echo "Path $path is not mounted correctly"
-#		usage
-#	fi
-#fi
+if [ $mountedpath ] ; then
+	# filter mount point
+	basepath=`df "$path" | tail -1 | awk '{ print $6 }'`
+	mountpoint -q $basepath
+	if [ $? -gt 0 ] ; then
+		echo "Path $basepath is not mounted correctly"
+		usage
+	fi
+fi
 
 if [ $warning -gt $critical ] ; then
 	echo "Warning is greater then critical"
 	usage
 fi
-exclude="ok.bat|intraConfig.mdb|Thumbs.db|dies ist der richtige Pfad.txt|new  24.txt"
 
-filecount=`find $path -maxdepth 1 -type f | grep -E -i -v "$exclude" | wc -l`
-oldestFile=`find $path -maxdepth 1 -type f -printf '%T@ %p\n' | grep -E -i -v "$exclude" |sort -k 1n | head -n 1`
+# find all files
+oldestFiles=`find $path -maxdepth $maxdepth -type f -printf '%T@ %p\n' | grep -E -i $grepOpt "$filelist" | sort -k 1n`
+
+# get file count, quotes are important at this time
+filecount=`echo "$oldestFiles" | wc -l`
+
+# get oldest file
+oldestFile=`echo "$oldestFiles" | head -n 1`
+
+# double awk because newer bashs append micro seconds 
 oldestFileDate=`echo $oldestFile | awk '{print $1}' | awk -F "." '{print $1}'`
 currentDate=`date +%s`
+
+# calculate time
 oldestFile=`echo $oldestFile | awk '{print $2}' `
 oldestFileTime=$(($currentDate - $oldestFileDate))
 
@@ -109,6 +139,6 @@ else
 fi
 
 convertTime $oldestFileTime
-echo "$returnString: file count is $filecount, oldest file \"`basename $oldestFile`\" is $oldestFileTime old|filecount=$filecount;$warning;$critical"
+echo -e "$returnString: file count is $filecount, oldest file \"`basename $oldestFile`\" is $oldestFileTime old\n$oldestFiles|filecount=$filecount;$warning;$critical"
 exit $returnState
 
