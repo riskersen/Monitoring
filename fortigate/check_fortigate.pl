@@ -29,7 +29,8 @@
 # - fixed white spaces
 # - added string compare for noSuchInstance
 # - fixed enumeration return state
-#
+# Release 1.4.5 (2015-03-30) Oliver Skibbe (oliskibbe (at) gmail.com)
+# - fixed description - username was missing
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
 # as published by the Free Software Foundation; either version 2
@@ -53,7 +54,7 @@ use Pod::Usage;
 use Socket;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.4.4";
+my $script_version = "1.4.5";
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
@@ -522,7 +523,7 @@ __END__
 Check Fortinet FortiGate Appliances
 =head1 SYNOPSIS
 =over
-=item S<check_fortigate.pl -H -C -T [-w|-c|-S|-s|-R|-M|-V|-?]>
+=item S<check_fortigate.pl -H -C -T [-w|-c|-S|-s|-R|-M|-V|-U|-A|-a|-X|-x-?]>
 Options:
 -H --host STRING or IPADDRESS Check interface on the indicated host
 -P --port INTEGER Port of indicated host, defaults to 161
@@ -538,6 +539,7 @@ Options:
 SNMP v1/v2c only
 -C --community STRING Community-String for SNMP, only at SNMP v1/v2c, defaults to public
 SNMP v3 only
+-U --username STRING username 
 -A --authpassword STRING auth password
 -a --authprotocol STRING auth algorithm, defaults to sha
 -X --privpassword STRING private password
@@ -555,6 +557,8 @@ INTEGER - SNMP Version on the indicated host, possible values 1,2,3 and defaults
 =back
 =head3 SNMP v3
 =over
+=item B<-U|--username>
+STRING - username 
 =item B<-A|--authpassword>
 STRING - authentication password
 =item B<-a|--authprotocol>
