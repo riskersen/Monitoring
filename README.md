@@ -12,6 +12,7 @@ Monitoring plugins and helper for Nagios/icinga/xxx
 - check_netapp_sdk.pl NetApp Check
 - check_mssql_jobs - Microsoft SQL Server
 - check_fortigate.pl - Fortigate
+- check_dwd.php - Check "Deutschen Wetterdienst" for weather warning 
 
 ## Helper
 - Nagios Email Repoter - Scheduled reporting mails
