@@ -511,7 +511,7 @@ sub parse_args {
           'critical|c:s'     => \$crit,
           'slave|s:1'        => \$slave,
           'reset|R:1'        => \$reset_file,
-          'path|F:s'         => \$path,
+          'path|p:s'         => \$path,
           'help|?!'          => \$help,
   ) or pod2usage(-exitval => 3, -verbose => 0);
 
