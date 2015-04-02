@@ -2,9 +2,9 @@
 # nagios: -epn
 # This Plugin checks the cluster state of FortiGate
 # Tested on: FortiGate 100D / FortiGate 300C (both 5.0.3)
-#
+# Tested on: FortiGate 200B (5.0.6), Fortigate 800C (5.2.2)
 # Author: Oliver Skibbe (oliskibbe (at) gmail.com)
-# Date: 2015-03-11
+# Date: 2015-04-01
 #
 # Changelog:
 # Release 1.0 (2013)
@@ -31,6 +31,9 @@
 # - fixed enumeration return state
 # Release 1.4.5 (2015-03-30) Oliver Skibbe (oliskibbe (at) gmail.com)
 # - fixed description - username was missing
+# Release 1.4.6 (2015-04-01) Alexandre Rigaud (arigaud.prosodie.cap (at) free.fr)
+# - added path option
+# - minor bugfixes (port option missing in snmp subs, wrong oid device s/n)
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
 # as published by the Free Software Foundation; either version 2
@@ -54,11 +57,11 @@ use Pod::Usage;
 use Socket;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.4.5";
+my $script_version = "1.4.6";
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
-    $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot) = parse_args();
+    $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path) = parse_args();
 
 # Initialize variables....
 my $net_snmp_debug_level = 0x00; # See http://search.cpan.org/~dtown/Net-SNMP-v6.0.1/lib/Net/SNMP.pm#debug()_-_set_or_get_the_debug_mode_for_the_module
@@ -82,12 +85,14 @@ if ( $version == 3 ) {
                             $auth_password,
                             $auth_prot,
                             $priv_password,
-                            $priv_prot
+                            $priv_prot,
+                            $port,
                        ); # Open SNMP connection...
 } else {
   ($session, $error) = get_snmp_session(
                             $ip,
                             $community,
+                            $port,
                        ); # Open SNMP connection...
 }
 
@@ -98,8 +103,8 @@ if ( $error ne "" ) {
 
 ## OIDs ##
 my $oid_unitdesc         = ".1.3.6.1.2.1.1.1.0";                   # Location of Fortinet device description... (String)
-my $oid_serial           = ".1.3.6.1.2.1.1.5.0";                   # Location of Fortinet serial number (String)
-my $oid_cluster_type     = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of Fortinet serial number (String)
+my $oid_serial           = ".1.3.6.1.4.1.12356.100.1.1.1.0";       # Location of Fortinet serial number (String)
+my $oid_cluster_type     = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of Fortinet cluster type (String)
 my $oid_cluster_serials  = ".1.3.6.1.4.1.12356.101.13.2.1.1.2";    # Location of Cluster serials (String)
 my $oid_cpu              = ".1.3.6.1.4.1.12356.101.13.2.1.1.3";    # Location of cluster member CPU (%)
 my $oid_net              = ".1.3.6.1.4.1.12356.101.13.2.1.1.5";    # Location of cluster member Net (?)
@@ -123,7 +128,6 @@ my $oid_apidtableroot     = ".1.3.6.1.4.1.12356.101.14.4.4.1.1" ;  # Represents 
 ## Stuff ##
 my $return_state;                                     # return state
 my $return_string;                                    # return string
-my $path     = "/usr/lib/nagios/plugins/FortiSerial"; # path to store serial filenames
 my $filename = $path . "/" . $ip;                     # file name to store serials
 my $oid;                                              # helper var
 my $value;                                            # helper var
@@ -157,10 +161,11 @@ exit($status{$return_state});
 sub get_snmp_session {
   my $ip = $_[0];
   my $community = $_[1];
+  my $port = $_[2];
   my ($session, $error) = Net::SNMP->session(
                               -hostname  => $ip,
                               -community => $community,
-                              -port      => 161,
+                              -port      => $port,
                               -timeout   => 10,
                               -retries   => 3,
                               -debug     => $net_snmp_debug_level,
@@ -179,9 +184,10 @@ sub get_snmp_session_v3 {
   my $auth_prot = $_[3];
   my $priv_password = $_[4];
   my $priv_prot = $_[5];
+  my $port = $_[6];
   my ($session, $error) = Net::SNMP->session(
                               -hostname     => $ip,
-                              -port         => 161,
+                              -port         => $port,
                               -timeout      => 10,
                               -retries      => 3,
                               -debug        => $net_snmp_debug_level,
@@ -231,6 +237,13 @@ sub get_health_value {
 
 sub get_cluster_state {
   my @help_serials; # helper array
+
+  # before launch snmp requests, test write access on path directory
+  if ( ! -w $path ) {
+        $return_state = "CRITICAL";
+        $return_string = "$return_state: Error writing on $path directory, permission denied";
+        return ($return_state, $return_string);
+  }
 
   # get all cluster member serials
   my %snmp_serials = %{get_snmp_table($session, $oid_cluster_serials)};
@@ -482,6 +495,7 @@ sub parse_args {
   my $slave         = 0;
   my $vpnmode       = "both";
   my $mode          = 2;
+  my $path          = "/usr/lib/nagios/plugins/FortiSerial";
   my $help          = 0;
 
   pod2usage(-message => "UNKNOWN: No Arguments given", -exitval => 3, -verbose => 0) if ( !@ARGV );
@@ -504,6 +518,7 @@ sub parse_args {
           'critical|c:s'     => \$crit,
           'slave|s:1'        => \$slave,
           'reset|R:1'        => \$reset_file,
+          'path|p:s'         => \$path,
           'help|?!'          => \$help,
   ) or pod2usage(-exitval => 3, -verbose => 0);
 
@@ -515,7 +530,7 @@ sub parse_args {
 
   return (
     $ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
-    $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot
+    $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path
   );
 }
 __END__
@@ -536,8 +551,10 @@ Options:
 -R --reset Resets ip file (cluster only)
 -M --mode STRING Output-Mode: 0 => just print, 1 => print and show failed tunnel, 2 => critical
 -V --vpnmode STRING VPN-Mode: both => IPSec & SSL/OpenVPN, ipsec => IPSec only, ssl => SSL/OpenVPN only
+-F --path STRING Path to store serial filenames, default /usr/lib/nagios/plugins/FortiSerial
 SNMP v1/v2c only
 -C --community STRING Community-String for SNMP, only at SNMP v1/v2c, defaults to public
+SNMP v3 only
 SNMP v3 only
 -U --username STRING username 
 -A --authpassword STRING auth password
@@ -591,6 +608,8 @@ BOOL - Resets ip file (cluster only)
 STRING - Output-Mode: 0 => just print, 1 => print and show failed tunnel, 2 => critical
 =item B<-V|--vpnmode>
 STRING - VPN-Mode: both => IPSec & SSL/OpenVPN, ipsec => IPSec only, ssl => SSL/OpenVPN only
+=item B<-F|--path>
+STRING - Path to store serial filenames
 =back
 =head1 DESCRIPTION
 This plugin checks Fortinet FortiGate devices via SNMP
