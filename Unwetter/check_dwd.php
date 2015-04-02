@@ -28,6 +28,8 @@ $url = "http://www.dwd.de/dyn/app/ws/html/reports/" . $region . "_warning_de.htm
 $crit_regex = "@.*Es (sind|ist) (?<warnung_count>\d+) Warnung.*Amtliche UNWETTERWARNUNG (?<warnung>.*) </p>.*von: (?<von_datum>\w+, \d{2}\.\d{2}\.\d{4} \d{2}:\d{2} Uhr) </p>.*bis: (?<bis_datum>\w+, \d{2}\.\d{2}\.\d{4} \d{2}:\d{2} Uhr) </p>.*@isUm";
 $warn_regex = "@.*Es (sind|ist) (?<warnung_count>\d+) Warnung.*Amtliche (?<warnung>.*) </p>.*von: (?<von_datum>\w+, \d{2}\.\d{2}\.\d{4} \d{2}:\d{2} Uhr) </p>.*bis: (?<bis_datum>\w+, \d{2}\.\d{2}\.\d{4} \d{2}:\d{2} Uhr) </p>.*@isUm";
 
+$ok_string = "Es sind keine Warnungen";
+
 
 $nagios_return = Array( 
 			0 => "OK",
@@ -50,27 +52,38 @@ curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
 $dwd_output = curl_exec($ch); 
 
 if ( curl_errno($ch) || curl_error($ch) ) {
-	$output = "UNKNOWN: CURL failed: Error no: " . curl_errno($ch) . " output: " . curl_error($ch);
+	$output = "CURL failed: Error no: " . curl_errno($ch) . " output: " . curl_error($ch);
+	$perf = "";
 	$out_state = 3;
 
 } else {
+	// helper
+	$matches = Array();
+
 	// crit regex
 	if ( preg_match($crit_regex, $dwd_output, $matches) ) {
 		$out_state = 2;
 	// warn regex
 	} else if ( preg_match($warn_regex, $dwd_output, $matches) ) {
 		$out_state = 1;
-	} else {
+	// ok string check stristr should be more performant
+	} else if ( stristr($dwd_output, $ok_string ) ) {
 		$out_state = 0;
+	// this should not never happen
+	} else {
+		$out_state = 3;
 	}
 
-	if ( $out_state > 0 ) {
+	if ( $out_state > 2 ) {
+		$output = "Kein gültiges Ergebnis gefunden. Bitte überprüfen Sie die URL " . $url . " und melden sich beim Autor des Plugins";
+
+	} else if ( $out_state > 0 ) {
 		$output = $matches['warnung_count'] . " Warnung(en) für " . $region_name . " gefunden, " . $matches['warnung'] . " von: " . $matches['von_datum'] . " bis: " . $matches['bis_datum'];
 	} else {
 		$output = "keine Warnungen für " . $region_name .  " auf " . $url . " gefunden";
 	}
 	
-	$perf = sprintf("'aktive_warnungen'=%s", ( $matches['warnung_count'] !== '' ) ? $matches['warnung_count'] : 0 );
+	$perf = sprintf("'aktive_warnungen'=%s", ( array_key_exists('warnung_count', $matches) && $matches['warnung_count'] !== '' ) ? $matches['warnung_count'] : 0 );
 }
 
 // close curl resource to free up system resources 
