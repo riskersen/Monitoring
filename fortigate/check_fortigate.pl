@@ -238,6 +238,13 @@ sub get_health_value {
 sub get_cluster_state {
   my @help_serials; # helper array
 
+  # before launch snmp requests, test write access on path directory
+  if ( ! -w $path ) {
+        $return_state = "CRITICAL";
+        $return_string = "$return_state: Error writing on $path directory, permission denied";
+        return ($return_state, $return_string);
+  }
+
   # get all cluster member serials
   my %snmp_serials = %{get_snmp_table($session, $oid_cluster_serials)};
   my $cluster_type = get_snmp_value($session, $oid_cluster_type);
