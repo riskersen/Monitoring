@@ -551,7 +551,7 @@ Options:
 -R --reset Resets ip file (cluster only)
 -M --mode STRING Output-Mode: 0 => just print, 1 => print and show failed tunnel, 2 => critical
 -V --vpnmode STRING VPN-Mode: both => IPSec & SSL/OpenVPN, ipsec => IPSec only, ssl => SSL/OpenVPN only
--F --path STRING Path to store serial filenames, default /usr/lib/nagios/plugins/FortiSerial
+-p --path STRING Path to store serial filenames, default /usr/lib/nagios/plugins/FortiSerial
 SNMP v1/v2c only
 -C --community STRING Community-String for SNMP, only at SNMP v1/v2c, defaults to public
 SNMP v3 only
@@ -608,7 +608,7 @@ BOOL - Resets ip file (cluster only)
 STRING - Output-Mode: 0 => just print, 1 => print and show failed tunnel, 2 => critical
 =item B<-V|--vpnmode>
 STRING - VPN-Mode: both => IPSec & SSL/OpenVPN, ipsec => IPSec only, ssl => SSL/OpenVPN only
-=item B<-F|--path>
+=item B<-p|--path>
 STRING - Path to store serial filenames
 =back
 =head1 DESCRIPTION
