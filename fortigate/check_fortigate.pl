@@ -1,10 +1,12 @@
 #!/usr/bin/perl
 # nagios: -epn
 # This Plugin checks the cluster state of FortiGate
+#
 # Tested on: FortiGate 100D / FortiGate 300C (both 5.0.3)
 # Tested on: FortiGate 200B (5.0.6), Fortigate 800C (5.2.2)
+#
 # Author: Oliver Skibbe (oliskibbe (at) gmail.com)
-# Date: 2015-04-01
+# Date: 2015-04-08
 #
 # Changelog:
 # Release 1.0 (2013)
@@ -34,6 +36,10 @@
 # Release 1.4.6 (2015-04-01) Alexandre Rigaud (arigaud.prosodie.cap (at) free.fr)
 # - added path option
 # - minor bugfixes (port option missing in snmp subs, wrong oid device s/n)
+# Release 1.5 (2015-04-08) Oliver Skibbe (oliskibbe (at) gmail.com)
+# - added check for cluster synchronization state
+# - temp disabled ipsec vpn check, OIDs seem missing
+#
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
 # as published by the Free Software Foundation; either version 2
@@ -57,7 +63,7 @@ use Pod::Usage;
 use Socket;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.4.6";
+my $script_version = "1.5";
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
@@ -104,20 +110,26 @@ if ( $error ne "" ) {
 ## OIDs ##
 my $oid_unitdesc         = ".1.3.6.1.2.1.1.1.0";                   # Location of Fortinet device description... (String)
 my $oid_serial           = ".1.3.6.1.4.1.12356.100.1.1.1.0";       # Location of Fortinet serial number (String)
-my $oid_cluster_type     = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of Fortinet cluster type (String)
-my $oid_cluster_serials  = ".1.3.6.1.4.1.12356.101.13.2.1.1.2";    # Location of Cluster serials (String)
 my $oid_cpu              = ".1.3.6.1.4.1.12356.101.13.2.1.1.3";    # Location of cluster member CPU (%)
 my $oid_net              = ".1.3.6.1.4.1.12356.101.13.2.1.1.5";    # Location of cluster member Net (?)
 my $oid_mem              = ".1.3.6.1.4.1.12356.101.13.2.1.1.4";    # Location of cluster member Mem (%)
 my $oid_ses              = ".1.3.6.1.4.1.12356.101.13.2.1.1.6";    # Location of cluster member Sessions (int)
 
+# Cluster
+my $oid_cluster_type     = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of Fortinet cluster type (String)
+my $oid_cluster_serials  = ".1.3.6.1.4.1.12356.101.13.2.1.1.2";    # Location of Cluster serials (String)
+my $oid_cluster_sync_state = ".1.3.6.1.4.1.12356.101.13.2.1.1.12"; # Location of cluster sync state (int)
+
 # VPN OIDs
+# XXX to be checked
 my $oid_ActiveSSL         = ".1.3.6.1.4.1.12356.101.12.2.3.1.2.1"; # Location of Fortinet firewall SSL VPN Tunnel connection count
 my $oid_ActiveSSLTunnel   = ".1.3.6.1.4.1.12356.101.12.2.3.1.6.1"; # Location of Fortinet firewall SSL VPN Tunnel connection count
 my $oid_ipsectuntableroot = ".1.3.6.1.4.1.12356.101.12.2.2.1";     # Table of IPSec VPN tunnels
 my $oidf_tunstatus        = ".20";                                 # Location of a tunnel's connection status
 my $oidf_tunndx           = ".1";                                  # Location of a tunnel's index...
 my $oidf_tunname          = ".3";                                  # Location of a tunnel's name...
+
+# WTP
 my $oid_apstatetableroot  = ".1.3.6.1.4.1.12356.101.14.4.4.1.7";   # Represents the connection state of a WTP to AC : offLine(1), onLine(2), downloadingImage(3), connectedImage(4), other(0)
 my $oid_wtpsessions       = ".1.3.6.1.4.1.12356.101.14.2.5.0";     # Represents the number of WTPs that are connecting to the AC.
 my $oid_wtpmanaged        = ".1.3.6.1.4.1.12356.101.14.2.4.0";     # Represents the number of WTPs being managed on the AC
@@ -248,7 +260,16 @@ sub get_cluster_state {
   # get all cluster member serials
   my %snmp_serials = %{get_snmp_table($session, $oid_cluster_serials)};
   my $cluster_type = get_snmp_value($session, $oid_cluster_type);
-  my %cluster_types = (1 => "Standalone", 2 => "Active/Active", 3 => "Active/Passive");
+  my %cluster_types = (
+                        1 => "Standalone", 
+                        2 => "Active/Active", 
+                        3 => "Active/Passive"
+  );
+  my %cluster_sync_states = (
+                        0 => 'Not Synchronized',
+                        1 => 'Synchronized'
+  );
+  my $sync_string = "Sync-State: " . $cluster_sync_states{0};
 
   # first time, write cluster members to helper file
   if ( ! -e $filename || $reset_file ) {
@@ -284,11 +305,21 @@ sub get_cluster_state {
       $return_string = "HA (" . $cluster_types{$cluster_type} . ") is active";
       $return_state = "OK";
     } else {
-      $return_string = "Unknown node in active HA (" . $cluster_types{$cluster_type} . ") found";
+      $return_string = "Unknown node in active HA (" . $cluster_types{$cluster_type} . ") found, maybe a --reset is nessessary?";
       $return_state = "WARNING";
     } # end compare serial list
   } # end scalar count
 
+  if ( $return_state eq "OK" ) {
+    my %cluster_sync_state = %{get_snmp_table($session, $oid_cluster_sync_state)};
+    while (($oid, $value) = each (%cluster_sync_state)) {
+      if ( $value == 0 ) {
+         $sync_string = "Sync-State: " . $cluster_sync_states{$value};
+         $return_state = "CRITICAL";
+         last;
+      }
+    }
+  }
   # if preferred master serial is not master
   if ( $pri_serial && ( $pri_serial ne $curr_serial ) ) {
     $return_string = $return_string . ", preferred master " . $pri_serial . " is not master!";
@@ -296,7 +327,7 @@ sub get_cluster_state {
   }
 
   # Write an output string...
-  $return_string = $return_state . ": " . $curr_device . " (Master: " . $curr_serial . ", Slave: " . $help_serials[$#help_serials] . "): " . $return_string;
+  $return_string = $return_state . ": " . $curr_device . " (Master: " . $curr_serial . ", Slave: " . $help_serials[$#help_serials] . "): " . $return_string . ", " . $sync_string;
   return ($return_state, $return_string);
 } # end cluster state
 
@@ -322,25 +353,26 @@ sub get_vpn_state {
   }
   # Unless specifically requesting SSL checks only, do an IPSec tunnel check
   if ($vpnmode ne "ssl") {
-    # Get just the top level tunnel data
-    my %tunnels = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunndx)};
-
-    while (($oid, $value) = each (%tunnels)) {
-      #Bump the total tunnel count
-      $ipstuncount++;
-      #If the tunnel is up, bump the connected tunnel count
-      if ( $entitystate{get_snmp_value($session, $oid_ipsectuntableroot . $oidf_tunstatus . "." . $ipstuncount)} eq "up" ) {
-        $ipstunsopen++;
-      } else {
-        #Tunnel is down. Add it to the failed counter
-        $ipstunsdown++;
-        # If we're counting failures and/or monitoring, put together an output error string of the tunnel name and its status
-        if ($mode >= 1){
-        $return_string_errors .= ", ";
-        $return_string_errors .= get_snmp_value($session, $oid_ipsectuntableroot . $oidf_tunname . "." . $ipstuncount)." ".$entitystate{get_snmp_value($session, $oid_ipsectuntableroot . $oidf_tunstatus . "." . $ipstuncount)};
-        }
-      } # end tunnel count
-    }
+  # N/A as of 2015    
+#    # Get just the top level tunnel data
+#    my %tunnels = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunndx)};
+#
+#    while (($oid, $value) = each (%tunnels)) {
+#      #Bump the total tunnel count
+#      $ipstuncount++;
+#      #If the tunnel is up, bump the connected tunnel count
+#      if ( $entitystate{get_snmp_value($session, $oid_ipsectuntableroot . $oidf_tunstatus . "." . $ipstuncount)} eq "up" ) {
+#        $ipstunsopen++;
+#      } else {
+#        #Tunnel is down. Add it to the failed counter
+#        $ipstunsdown++;
+#        # If we're counting failures and/or monitoring, put together an output error string of the tunnel name and its status
+#        if ($mode >= 1){
+#        $return_string_errors .= ", ";
+#        $return_string_errors .= get_snmp_value($session, $oid_ipsectuntableroot . $oidf_tunname . "." . $ipstuncount)." ".$entitystate{get_snmp_value($session, $oid_ipsectuntableroot . $oidf_tunstatus . "." . $ipstuncount)};
+#        }
+#      } # end tunnel count
+#    }
   }
   #Set Unitstate
   if (($mode >= 2 ) && ($vpnmode ne "ssl")) {
@@ -472,10 +504,19 @@ sub get_snmp_table{
   my $session = $_[0];
   my $oid = $_[1];
 
-  return $session->get_table(
+  my $sess_get_table = $session->get_table(
                        -baseoid =>$oid
   );
+
+  if ( ! defined($sess_get_table) ) {
+    $return_state = "UNKNOWN";
+
+    print $return_state . ": session get table failed for $oid \n";
+    exit($status{$return_state});
+  }
+  return $sess_get_table;
 } # end get snmp table
+
 
 sub parse_args {
   my $ip            = "";       # snmp host
