@@ -269,7 +269,7 @@ sub get_cluster_state {
                         0 => 'Not Synchronized',
                         1 => 'Synchronized'
   );
-  my $sync_string = "Sync-State: " . $cluster_sync_states{0};
+  my $sync_string = "Sync-State: " . $cluster_sync_states{1};
 
   # first time, write cluster members to helper file
   if ( ! -e $filename || $reset_file ) {
