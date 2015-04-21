@@ -4,7 +4,8 @@
 This plugin checks the DWD Web Output for a given Region 
 
  Author: Oliver Skibbe (oliskibbe (at) gmail.com)
- Date: 2015-03-31
+ Web: http://oskibbe.blogspot.com / https://github.com/riskersen
+ Date: 2015-04-21
 
  Changelog:
  Release 1.0 (2015-03-31)
@@ -14,11 +15,33 @@ This plugin checks the DWD Web Output for a given Region
  - modified REGEX to support CRIT and WARN (UNWETTERWARNUNG > WARNUNG)
  - code clean up
 
+ Release 1.2 (2015-04-21)
+ - added ignore warning support
+
 */
+
+function stripos_array( $needle, $haystack ) {
+	if ( !is_array( $haystack ) ) {
+		if ( stripos( $needle, $haystack ) ) {
+			return $element;
+		}
+	} else {
+		foreach ( $haystack as $element ) {
+			if ( stripos( $needle, $element ) ) {
+				return $element;
+			}
+		}
+	}
+
+	return false;
+}
 
 if ( $argc <= 2 ) {
 	help();
 }
+
+// warnings which should be ignored
+$ignore_warnung = Array( "WINDBÖEN", "FOOBAR");
 
 $region = strtoupper($argv[1]);
 $region_name = $argv[2];
@@ -73,6 +96,10 @@ if ( curl_errno($ch) || curl_error($ch) ) {
 	} else {
 		$out_state = 3;
 	}
+
+
+	// ignore return
+	$out_state = ( ! stripos_array( $matches['warnung'] , $ignore_warnung ) ) ? $out_state : 0;
 
 	if ( $out_state > 2 ) {
 		$output = "Kein gültiges Ergebnis gefunden. Bitte überprüfen Sie die URL " . $url . " und melden sich beim Autor des Plugins";
