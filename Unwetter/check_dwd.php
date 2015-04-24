@@ -18,6 +18,9 @@ This plugin checks the DWD Web Output for a given Region
  Release 1.2 (2015-04-21)
  - added ignore warning support
 
+ Release 1.5 (2015-04-24)
+ - added proxy support
+
 */
 
 function stripos_array( $needle, $haystack ) {
@@ -39,6 +42,16 @@ function stripos_array( $needle, $haystack ) {
 if ( $argc <= 2 ) {
 	help();
 }
+
+
+/* Proxy Settings */
+// proxy_url = http://192.168.178.1:8080
+$proxy_url = "";
+// user
+$proxy_user = "";
+// pass
+$proxy_pass = "";
+
 
 // warnings which should be ignored
 $ignore_warnung = Array( "WINDBÖEN", "NEBEL");
@@ -71,6 +84,11 @@ curl_setopt($ch, CURLOPT_URL, $url);
 //return the transfer as a string 
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); 
 
+// curl proxy settings
+curl_setopt($ch, CURLOPT_PROXYAUTH, CURLAUTH_BASIC);
+curl_setopt($ch, CURLOPT_PROXY, $proxy_url);    
+curl_setopt($ch, CURLOPT_PROXYUSERPWD, $proxy_user . ":" . $proxy_pass);
+
 // $output contains the output string 
 $dwd_output = curl_exec($ch); 
 
@@ -99,7 +117,7 @@ if ( curl_errno($ch) || curl_error($ch) ) {
 
 
 	// ignore return
-	$out_state = ( ! stripos_array( $matches['warnung'] , $ignore_warnung ) ) ? $out_state : 0;
+	$out_state = ( ( array_key_exists('warnung_count', $matches) && $matches['warnung_count'] !== '' ) && ! stripos_array( $matches['warnung'] , $ignore_warnung ) ) ? $out_state : 0;
 
 	if ( $out_state > 2 ) {
 		$output = "Kein gültiges Ergebnis gefunden. Bitte überprüfen Sie die URL " . $url . " und melden sich beim Autor des Plugins";
