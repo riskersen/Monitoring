@@ -41,7 +41,7 @@ if ( $argc <= 2 ) {
 }
 
 // warnings which should be ignored
-$ignore_warnung = Array( "WINDBÖEN", "FOOBAR");
+$ignore_warnung = Array( "WINDBÖEN", "NEBEL");
 
 $region = strtoupper($argv[1]);
 $region_name = $argv[2];
