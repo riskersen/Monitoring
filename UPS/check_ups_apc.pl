@@ -434,17 +434,17 @@ sub main {
     given ( $battemperature ) {
       when ( $_ > $battemperature_crit ) {
         $returnstring = $returnstring . "CRIT BATT TEMP $battemperature C - ";
-        $perfdata = $perfdata . "'temp'=${battemperature}C;$battemperature_warn;$battemperature_crit;; ";
+        $perfdata = $perfdata . "'temp'=${battemperature};$battemperature_warn;$battemperature_crit;; ";
         $status = 2;
       }
       when ( $_ > $battemperature_warn ) {
         $returnstring = $returnstring . "WARN BATT TEMP $battemperature C - ";
-        $perfdata = $perfdata . "'temp'=${battemperature}C;$battemperature_warn;$battemperature_crit;; ";
+        $perfdata = $perfdata . "'temp'=${battemperature};$battemperature_warn;$battemperature_crit;; ";
         $status = 1 if ( $status != 2 );
       }
       when ($_ >= 0 ) {
         $returnstring = $returnstring . "BATT TEMP $battemperature C - ";
-        $perfdata = $perfdata . "'temp'=${battemperature}C;$battemperature_warn;$battemperature_crit;; ";
+        $perfdata = $perfdata . "'temp'=${battemperature};$battemperature_warn;$battemperature_crit;; ";
       }
       default {
         $returnstring = $returnstring . "UNKNOWN BATT TEMP! - ";
@@ -458,17 +458,17 @@ sub main {
        given ( $exttemperature ) {
           when ( $_ > $exttemperature_crit) {
             $returnstring = $returnstring . "CRIT EXT TEMP $exttemperature C - ";
-            $perfdata = $perfdata . "'exttemp'=${exttemperature}C;$exttemperature_warn;$exttemperature_crit;; ";
+            $perfdata = $perfdata . "'exttemp'=${exttemperature};$exttemperature_warn;$exttemperature_crit;; ";
             $status = 2;
           }
           when ( $_ > $exttemperature_warn ) {
             $returnstring = $returnstring . "WARN EXT TEMP $exttemperature C - ";
-            $perfdata = $perfdata . "'exttemp'=${exttemperature}C;$exttemperature_warn;$exttemperature_crit;; ";
+            $perfdata = $perfdata . "'exttemp'=${exttemperature};$exttemperature_warn;$exttemperature_crit;; ";
             $status = 1 if ( $status != 2 );
           }
           when ( $_ >= 0 ) {
             $returnstring = $returnstring . "EXT TEMP $exttemperature C - ";
-            $perfdata = $perfdata . "'exttemp'=${exttemperature}C;$exttemperature_warn;$exttemperature_crit;; ";
+            $perfdata = $perfdata . "'exttemp'=${exttemperature};$exttemperature_warn;$exttemperature_crit;; ";
           }
           default {
             $returnstring = $returnstring . "UNKNOWN EXT TEMP! - ";
@@ -511,7 +511,7 @@ sub main {
 		$returnstring = $returnstring . "$minutes MINUTES REMAINING";
 	  }
         }
-	$perfdata = $perfdata . "'remaining_minutes'=${minutes}min;;$remaining_time_crit;; ";
+	$perfdata = $perfdata . "'remaining_sec'=" . $minutes*60 . "s;" . $remaining_time_warn*60 . ";" . $remaining_time_crit*60 . ";0; ";
     }
 
     # load in watthour

@@ -39,6 +39,9 @@
 # Release 1.5 (2015-04-08) Oliver Skibbe (oliskibbe (at) gmail.com)
 # - added check for cluster synchronization state
 # - temp disabled ipsec vpn check, OIDs seem missing
+# Release 1.5.1 (2015-04-14) Alexandre Rigaud (arigaud.prosodie.cap (at) free.fr)
+# - enabled ipsec vpn check
+# - added check hardware
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -63,7 +66,7 @@ use Pod::Usage;
 use Socket;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.5";
+my $script_version = "1.5.1";
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
@@ -111,7 +114,7 @@ if ( $error ne "" ) {
 my $oid_unitdesc         = ".1.3.6.1.2.1.1.1.0";                   # Location of Fortinet device description... (String)
 my $oid_serial           = ".1.3.6.1.4.1.12356.100.1.1.1.0";       # Location of Fortinet serial number (String)
 my $oid_cpu              = ".1.3.6.1.4.1.12356.101.13.2.1.1.3";    # Location of cluster member CPU (%)
-my $oid_net              = ".1.3.6.1.4.1.12356.101.13.2.1.1.5";    # Location of cluster member Net (?)
+my $oid_net              = ".1.3.6.1.4.1.12356.101.13.2.1.1.5";    # Location of cluster member Net (kbps)
 my $oid_mem              = ".1.3.6.1.4.1.12356.101.13.2.1.1.4";    # Location of cluster member Mem (%)
 my $oid_ses              = ".1.3.6.1.4.1.12356.101.13.2.1.1.6";    # Location of cluster member Sessions (int)
 
@@ -136,6 +139,12 @@ my $oid_wtpmanaged        = ".1.3.6.1.4.1.12356.101.14.2.4.0";     # Represents 
 my $oid_apipaddrtableroot = ".1.3.6.1.4.1.12356.101.14.4.4.1.3" ;  # Represents the IP address of a WTP
 my $oid_apidtableroot     = ".1.3.6.1.4.1.12356.101.14.4.4.1.1" ;  # Represents the unique identifier of a WTP
 
+# HARDWARE SENSORS
+# "A list of device specific hardware sensors and values. Because different devices have different hardware sensor capabilities, this table may or may not contain any values."
+my $oid_hwsensorid       = ".1.3.6.1.4.1.12356.101.4.3.2.1.1";     # Hardware Sensor index
+my $oid_hwsensorname     = ".1.3.6.1.4.1.12356.101.4.3.2.1.2";     # Hardware Sensor Name
+my $oid_hwsensorvalue    = ".1.3.6.1.4.1.12356.101.4.3.2.1.3";     # Hardware Sensor Value
+my $oid_hwsensoralarm    = ".1.3.6.1.4.1.12356.101.4.3.2.1.4";     # Hardware Sensor Alarm (not all sensors have alarms!)
 
 ## Stuff ##
 my $return_state;                                     # return state
@@ -157,6 +166,7 @@ switch ( lc($type) ) {
   case "ses" { ($return_state, $return_string) = get_health_value($oid_ses, "Session", ""); }
   case "vpn" { ($return_state, $return_string) = get_vpn_state(); }
   case "wtp" { ($return_state, $return_string) = get_wtp_state("%"); }
+  case "hw" { ($return_state, $return_string) = get_hw_state("%"); }
   else { ($return_state, $return_string) = get_cluster_state(); }
 }
 
@@ -355,24 +365,24 @@ sub get_vpn_state {
   if ($vpnmode ne "ssl") {
   # N/A as of 2015    
 #    # Get just the top level tunnel data
-#    my %tunnels = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunndx)};
-#
-#    while (($oid, $value) = each (%tunnels)) {
-#      #Bump the total tunnel count
-#      $ipstuncount++;
-#      #If the tunnel is up, bump the connected tunnel count
-#      if ( $entitystate{get_snmp_value($session, $oid_ipsectuntableroot . $oidf_tunstatus . "." . $ipstuncount)} eq "up" ) {
-#        $ipstunsopen++;
-#      } else {
-#        #Tunnel is down. Add it to the failed counter
-#        $ipstunsdown++;
-#        # If we're counting failures and/or monitoring, put together an output error string of the tunnel name and its status
-#        if ($mode >= 1){
-#        $return_string_errors .= ", ";
-#        $return_string_errors .= get_snmp_value($session, $oid_ipsectuntableroot . $oidf_tunname . "." . $ipstuncount)." ".$entitystate{get_snmp_value($session, $oid_ipsectuntableroot . $oidf_tunstatus . "." . $ipstuncount)};
-#        }
-#      } # end tunnel count
-#    }
+    my %tunnels = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunndx)};
+
+    while (($oid, $value) = each (%tunnels)) {
+      #Bump the total tunnel count
+      $ipstuncount++;
+      #If the tunnel is up, bump the connected tunnel count
+      if ( $entitystate{get_snmp_value($session, $oid_ipsectuntableroot . $oidf_tunstatus . "." . $ipstuncount)} eq "up" ) {
+        $ipstunsopen++;
+      } else {
+        #Tunnel is down. Add it to the failed counter
+        $ipstunsdown++;
+        # If we're counting failures and/or monitoring, put together an output error string of the tunnel name and its status
+        if ($mode >= 1){
+        $return_string_errors .= ", ";
+        $return_string_errors .= get_snmp_value($session, $oid_ipsectuntableroot . $oidf_tunname . "." . $ipstuncount)." ".$entitystate{get_snmp_value($session, $oid_ipsectuntableroot . $oidf_tunstatus . "." . $ipstuncount)};
+        }
+      } # end tunnel count
+    }
   }
   #Set Unitstate
   if (($mode >= 2 ) && ($vpnmode ne "ssl")) {
@@ -462,6 +472,40 @@ sub get_wtp_state {
   return ($return_state, $return_string);
 } # end wtp state
 
+sub get_hw_state{
+   my $k;
+   my %hw_name_table = %{get_snmp_table($session, $oid_hwsensorname)};
+
+
+   my %hwsensoralarmstatus= (
+      0 => 'False',
+      1 => 'True'
+   );
+
+   $return_state = "OK";
+   $return_string = "All components are in appropriate state";
+   foreach $k (keys(%hw_name_table)) {
+         my $unit;
+         my $hw_name = $hw_name_table{$k};
+         my $sensoralr;
+         if ($hw_name  =~ /Fan\s/) { $unit = "RPM"; }
+         elsif ($hw_name  =~ /^DTS\sCPU[0-9]?|Temp|LM75|^ADT74(90|62)\s.+/) { $unit = "C"; }
+         elsif ($hw_name  =~ /^VCCP|^P[13]V[138]_.+|^AD[_\+].+|^\+(12|5|3\.3|1\.5|1\.25|1\.1)V|^PS[0-9]\s(VIN|VOUT|12V\sOutput)|^AD[_\+].+|^INA219\sPS[0-9]\sV(sht|bus)/) { $unit = "V"; }
+         else { $unit = "?"; }
+         my @num = split(/\./, $k);
+         my $sensorid = $num[$#num];
+         my $oid_alarm = $oid_hwsensoralarm . ".$sensorid";
+         my $oid_value = $oid_hwsensorvalue . ".$sensorid";
+         $sensoralr = get_snmp_value($session, $oid_alarm);
+      if ($sensoralr == 1){
+            my $sensorval = get_snmp_value($session, $oid_value);
+            $return_string = "$hw_name alarm is $hwsensoralarmstatus{$sensoralr} ($sensorval $unit)";
+          $return_state = "CRITICAL";
+      }
+   }
+   return ($return_state, $return_string);
+} # end hw state
+
 sub close_snmp_session{
   my $session = $_[0];
 
@@ -480,7 +524,6 @@ sub get_snmp_value{
     print $return_state . ": OID $oid does not exist\n";
     exit($status{$return_state});
   }
-
   return $result{$oid};
 } # end get snmp value
 
@@ -584,7 +627,7 @@ Options:
 -H --host STRING or IPADDRESS Check interface on the indicated host
 -P --port INTEGER Port of indicated host, defaults to 161
 -v --version STRING SNMP Version, defaults to SNMP v2, v1-v3 supported
--T --type STRING CPU, MEM, Ses, VPN, wtp, Cluster
+-T --type STRING CPU, MEM, Ses, VPN, wtp, Cluster, hw
 -S --serial STRING Primary serial number
 -s --slave get values of slave
 -w --warning INTEGER Warning threshold, applies to cpu, mem, session wtp.
@@ -634,7 +677,7 @@ STRING - Community-String for SNMP, defaults to public only used with SNMP versi
 =head3 Other
 =over
 =item B<-T|--type>
-STRING - CPU, MEM, Ses, VPN, net, Cluster, wtp
+STRING - CPU, MEM, Ses, VPN, net, Cluster, wtp, hw
 =item B<-S|--serial>
 STRING - Primary serial number.
 =item B<-s|--slave>
