@@ -686,8 +686,6 @@ sub check_aggr {
 sub check_cluster {
 
   # variables
-  $exit_hash{exit_msg} = "Cluster is fine! ";
-  
   my $cf_hwassist_local_code = OK;
   my $cf_hwassist_partner_code = OK;
   
@@ -740,7 +738,12 @@ sub check_cluster {
     $exit_hash{exit_msg} .= "Local HW_Assist is inactive! " if ( $cf_hwassist_local_code != OK );
   }
 
-  $exit_hash{exit_msg} = " " . $exit_hash{exit_msg};
+  if ( $exit_hash{exit_state} == OK ) {
+    $exit_hash{exit_msg} = "Cluster is fine!";
+  } else {
+    $exit_hash{exit_msg} = " " . $exit_hash{exit_msg};
+  }
+
   return (%exit_hash);
 }
 
