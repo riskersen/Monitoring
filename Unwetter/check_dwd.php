@@ -44,13 +44,14 @@ if ( $argc <= 2 ) {
 }
 
 
-/* Proxy Settings */
-// proxy_url = http://192.168.178.1:8080
-$proxy_url = "";
-// user
+// Proxy Settings 
+$proxy_url = "http://192.168.101.1:8080";
 $proxy_user = "";
-// pass
 $proxy_pass = "";
+
+// curl timeout settings
+$connect_timeout = 5;
+$timeout = 15;
 
 
 // warnings which should be ignored
@@ -74,7 +75,6 @@ $nagios_return = Array(
 			3 => "UNKNOWN",
 );
 
-
 // create curl resource 
 $ch = curl_init(); 
 
@@ -84,16 +84,21 @@ curl_setopt($ch, CURLOPT_URL, $url);
 //return the transfer as a string 
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); 
 
+// curl connect timeout
+curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $connect_timeout);
+curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+
 // curl proxy settings
 curl_setopt($ch, CURLOPT_PROXYAUTH, CURLAUTH_BASIC);
 curl_setopt($ch, CURLOPT_PROXY, $proxy_url);    
 curl_setopt($ch, CURLOPT_PROXYUSERPWD, $proxy_user . ":" . $proxy_pass);
 
-// $output contains the output string 
+// $dwd_output contains the output string 
 $dwd_output = curl_exec($ch); 
+$curl_errno = curl_errno($ch);
 
-if ( curl_errno($ch) || curl_error($ch) ) {
-	$output = "CURL failed: Error no: " . curl_errno($ch) . " output: " . curl_error($ch);
+if ( $curl_errno != 0 || curl_error($ch) ) {
+	$output = "CURL failed: Error no: " . $curl_errno . " error: " . curl_error($ch);
 	$perf = "";
 	$out_state = 3;
 
