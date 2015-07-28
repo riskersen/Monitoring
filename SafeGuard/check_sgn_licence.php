@@ -34,17 +34,22 @@
 
     Sie sollten eine Kopie der GNU General Public License zusammen mit diesem
     Programm erhalten haben. Wenn nicht, siehe <http://www.gnu.org/licenses/>.
-*/
 
-function strposa($haystack, $needles=array(), $offset=0) {
-        $chr = array();
-        foreach($needles as $needle) {
-// DEBUG		echo "Haystack: " . $haystack . " Needle: " . $needle . PHP_EOL;
-                $res = strpos($haystack, $needle, $offset);
-                if ($res !== false) $chr[$needle] = $res;
-        }
-        if(empty($chr)) return false;
-} 
+
+
+	Author: Oliver Skibbe (oliskibbe@gmail.com)
+	URL: https://github.com/riskersen/Monitoring / http://oskibbe.blogspot.com
+	Date: 2015-07-28
+	Version: 1.0
+	
+	Changelog
+		- 2015-07-20 (Oliver Skibbe): initial release
+		- 2015-07-28 (Oliver Skibbe): 
+			- performance improvements
+			- added expiry date check
+				- options x,y control warn/crit
+				- option d date output format
+*/		
 
 if (!extension_loaded('pdo_dblib')) {
     if (!dl('pdo_dblib.so')) {
@@ -53,9 +58,17 @@ if (!extension_loaded('pdo_dblib')) {
     }
 }
 
+$dateFormatArray = Array (
+		'de' => 104,
+		'us' => 110,
+		'it' => 105,
+		'uk' => 103,
+		'fr' => 103,
+		'jp' => 111
+);
 
 // args
-$options = getopt("H:U:P:D:e:w:c:h");
+$options = getopt("H:U:P:D:e:w:c:x:y:d:h");
 if ( isset($options['h']) ) {
         help();
 }
@@ -67,12 +80,18 @@ if ( !isset($options['H']) || !isset($options['U']) ) {
 }
 
 // map options to variables
-$excludeList 	= ( isset($options['e']) ) ? explode(",", $options['e']) : Array();
-$warn 		= ( isset($options['w']) ) ? $options['w'] : 85;
-$crit		= ( isset($options['c']) ) ? $options['c'] : 95;
+$excludeWhereList = ( isset($options['e']) ? explode(",", $options['e']) : Array("''"));
+$warn 		= ( isset($options['w'])  ? $options['w'] : 85);
+$crit		= ( isset($options['c'])  ? $options['c'] : 95);
+
+$expiryWarn	= ( isset($options['x'])  ? $options['x'] : 90);
+$expiryCrit	= ( isset($options['y'])  ? $options['y'] : 30);
+
+$dateStyle	= ( isset($options['d']) ? $options['d'] : 'de');
+
 $myServer 	= $options['H'];
 $myUser   	= $options['U'];
-$myPass   	= ( isset($options['P']) ) ? $options['P'] : '';
+$myPass   	= ( isset($options['P']) ? $options['P'] : '');
 $myDB     	= ( isset($options['D']) ) ? $options['D'] : 'safeguard';
 
 // helper 
@@ -84,6 +103,7 @@ $outArray = Array(
 	2 => 'C', 
 	3 => 'U'
 );
+
 $outString  = "";
 $perfString = "|";
 
@@ -92,27 +112,37 @@ try {
 	// datenbankverbindung aufbauen
 	$dbh = new PDO("dblib:host=$myServer;dbname=$myDB", $myUser, $myPass);
 
-	$dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
+	$dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch (PDOException $e ) {
         echo "UNKNOWN: failed to get DB handle: " . $e->getMessage() . PHP_EOL;
 	exit(3);
 } // end db connect
 
 // build query string
-$query = "SELECT 
-	
+$query = "
+SELECT 
 	( COUNT(*) * 100) / LIC.LIC_SOFT_LIMIT AS lic_usage_percent,
 	COUNT(*) 		AS lic_usage,
 	IIF.IIF_FEATURE 	AS feature_name,
 	LIC.LIC_FEATURE_NAME 	AS lic_feature_name,
-	LIC.LIC_SOFT_LIMIT 	AS lic_soft_limit
+	LIC.LIC_SOFT_LIMIT 	AS lic_soft_limit,
+        ISNULL(
+			DATEDIFF(day, GETDATE(), LIC.LIC_EXPIRY_DATE),
+			999
+		) AS lic_expiry_days,
+        ISNULL(
+			CONVERT(nVarChar(30), LIC.LIC_EXPIRY_DATE, " . $dateFormatArray[$dateStyle] . "),
+			'never'
+		) AS lic_expiry_date
 FROM 
 	IVT_INST_FEATURES IIF
 LEFT JOIN
 	LICENCES LIC
 		ON LIC.LIC_FEATURE = IIF.IIF_FEATURE
+WHERE
+	LIC.LIC_FEATURE_NAME NOT IN ('" . implode("','", $excludeWhereList) . "')
 GROUP BY 
-	IIF.IIF_FEATURE, LIC.LIC_SOFT_LIMIT, LIC.LIC_FEATURE_NAME
+	IIF.IIF_FEATURE, LIC.LIC_SOFT_LIMIT, LIC.LIC_FEATURE_NAME, LIC.LIC_EXPIRY_DATE
 ";
 
 try {
@@ -126,34 +156,36 @@ try {
 	exit(3);
 } // end db
 
-foreach ( $result as $line ) {
-	// exclude list
-	if ( strposa(trim($line['lic_feature_name']), $excludeList) === false ) {
+$resultCount = count($result);
 
-		if ( $line['lic_usage_percent'] >= $crit ) {
+if ( $resultCount > 0 ) {
+	foreach ( $result as $line ) {
+
+
+		// license usage
+		if ( $line['lic_usage_percent'] >= $crit || $line['lic_expiry_days'] <= $expiryCrit) {
 			// critical > all
 			$exitCode = 2;
 			$tempCode = 2;
-		} else if ( $line['lic_usage_percent'] >= $warn ) {
+		} else if ( $line['lic_usage_percent'] >= $warn || $line['lic_expiry_days'] <= $expiryWarn ) {
 			// raise exit code if below warning
-	        	$exitCode = ( $exitCode == 0 ) ? 1 : $exitCode;
+		       	$exitCode = ( $exitCode == 0 ) ? 1 : $exitCode;
 			$tempCode = 1;
 		} else {
 			$tempCode = 0;
 		} // end if percentage
-
 		// calculate perfdata values, round float values
 		$warn_count = round( ( $line['lic_soft_limit'] * ( 100 - $warn ) )/100, 0, PHP_ROUND_HALF_UP);
 		$crit_count = round( ( $line['lic_soft_limit'] * ( 100 - $warn ) )/100, 0, PHP_ROUND_HALF_UP);
-	
+		
 		// build output string
-		$outString  .= " " . $outArray[$tempCode] . "->" . $line['lic_feature_name'] . ": " . $line['lic_usage_percent'] . "% (" . $line['lic_usage'] . "/" . $line['lic_soft_limit'] . " Lic)";
-
+		$outString  .= " " . $outArray[$tempCode] . "->" . $line['lic_feature_name'] . ": " . $line['lic_usage_percent'] . "% (" . $line['lic_usage'] . "/" . $line['lic_soft_limit'] . " Lic, Expires: " . $line['lic_expiry_date'] . ")";
+	
 		// build perfdata string, percentage and plain count
 		$perfString .= " '" . $line['feature_name'] . "_pct'=" . $line['lic_usage_percent'] . "%;" . $warn . ";" . $crit; 
 		$perfString .= " '" . $line['feature_name'] . "'=" . $line['lic_usage'] . ";" . $warn_count . ";" . $crit_count . ";0;" . $line['lic_soft_limit']; 
-	} // end if feature exclude
-} // end foreach db result
+	} // end foreach db result
+}
 
 // nested short if is not working at php :-(
 switch ( $exitCode ) {
@@ -164,7 +196,7 @@ switch ( $exitCode ) {
 		$exitString = "WARNING:";
 		break;
 	default:
-		$exitString = "OK: all licences are fine";
+		$exitString = "OK: " . ( $resultCount > 0  ? "everythings fine:" : "no licences found" );
 		break;
 } // end switch exit string 
 
@@ -173,6 +205,9 @@ echo $exitString . $outString . $perfString . PHP_EOL;
 exit($exitCode);
 
 function help() {
+
+	global $dateFormatArray;
+
         echo "checks configured safeguard enterprise sql server for license usage
 \t-H\thostname of db server e.g. 'sgn1'
 \t-U\tusername e.g. 'domain\dbsnmp'
@@ -180,7 +215,10 @@ function help() {
 \t-D\tdatabase e.g. 'safeguard' -> defaults to safeguard
 \t-w\twarning (in %) e.g. 75 -> defaults to 85
 \t-c\tcritical (in %) e.g. 95 -> defaults to 95
-\t-e\texclude e.g. 'Data Exchange' -> for more values, use a comma separated list
+\t-y\tcritical expiry days -> defaults to 30
+\t-x\twarning expiry days -> defaults to 90
+\t-d\toutput date style -> defaults to de, supported: " . implode(", ", array_keys($dateFormatArray)) . "
+\t-e\texclude e.g. 'Data Exchange' -> for more values, use a comma separated list ('x,y,z')
 \t-h\tprints this text
 ";
 
