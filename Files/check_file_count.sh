@@ -1,25 +1,23 @@
 #!/bin/bash
 # Author: oliver.skibbe (at) mdkn.de
-# Date: 2015-03-17
+# Date: 2015-10-06
 # Purpose: return warning or critical if file count of specified path is higher then limits
 # Also checks if a path is a mounted path
 # Changelog:
+#		- reformated code
+# 
 # 		- improved code
 #		- now supports include/exclude
 #		- updated usage
 #		- multiline output for found files (limited to 150)
 
-PROGNAME=`basename $0`
-PROGPATH=`echo $0 | sed -e 's,[\\/][^\\/][^\\/]*$,,'`
+PROGNAME=$(basename $0)
+PROGPATH=$(echo $0 | sed -e 's,[\\/][^\\/][^\\/]*$,,')
 . $PROGPATH/utils.sh
 
-#path=$1
-#warning=$2
-#critical=$3
-
 function usage () {
-	echo -e "`basename $0`: checks given path for file count
-Usage: `basename $0` -p path -w warning -c critical -d max-depth -f filelist [-e|-m 1]
+	echo -e "$PROGNAME: checks given path for file count
+Usage: $PROGNAME -p path -w warning -c critical -d max-depth -f filelist [-e|-m 1]
 -w\twarning count
 -c\tcritical count
 -p\tpath to monitor
@@ -90,15 +88,15 @@ while getopts ":m:p:w:c:d:f:e:" opt; do
 	esac
 done
 
-if [ ! -d $path ] ; then
+if [ ! -d "$path" ] ; then
 	echo "Path $path does not exist!"
 	usage
 fi
 
 if [ $mountedpath ] ; then
 	# filter mount point
-	basepath=`df "$path" | tail -1 | awk '{ print $6 }'`
-	mountpoint -q $basepath
+	basepath=$(df "$path" | tail -1 | awk '{ print $6 }')
+	mountpoint -q "$basepath"
 	if [ $? -gt 0 ] ; then
 		echo "Path $basepath is not mounted correctly"
 		usage
@@ -106,25 +104,25 @@ if [ $mountedpath ] ; then
 fi
 
 if [ $warning -gt $critical ] ; then
-	echo "Warning is greater than critical"
+	echo "Warning is greater then critical"
 	usage
 fi
 
 # find all files
-oldestFiles=`find $path -maxdepth $maxdepth -type f -printf '%T@ %p\n' | grep -E -i $grepOpt "$filelist" | sort -k 1n`
+oldestFiles=$(find "$path" -maxdepth $maxdepth -type f -printf '%T@ %p\n' | grep -E -i $grepOpt "$filelist" | sort -k 1n)
 
-# get file count, quotes are important at this time
-filecount=`echo "$oldestFiles" | wc -l`
+# get file count
+filecount=$(echo "$oldestFiles" | wc -l)
 
 # get oldest file
-oldestFile=`echo "$oldestFiles" | head -n 1`
+oldestFile=$(echo "$oldestFiles" | head -n 1)
 
 # double awk because newer bashs append micro seconds 
-oldestFileDate=`echo $oldestFile | awk '{print $1}' | awk -F "." '{print $1}'`
-currentDate=`date +%s`
+oldestFileDate=$(echo "$oldestFile" | awk '{print $1}' | awk -F "." '{print $1}')
+currentDate=$(date +%s)
 
 # calculate time
-oldestFile=`echo $oldestFile | awk '{print $2}' `
+oldestFile=$(echo $oldestFile | awk '{print $2}')
 oldestFileTime=$(($currentDate - $oldestFileDate))
 
 if [ $filecount -gt $critical ] ; then
@@ -139,6 +137,6 @@ else
 fi
 
 convertTime $oldestFileTime
-echo -e "$returnString: file count is $filecount, oldest file \"`basename $oldestFile`\" is $oldestFileTime old\n$oldestFiles|filecount=$filecount;$warning;$critical"
+echo -e "$returnString: file count is $filecount, oldest file \"$(basename $oldestFile)\" is $oldestFileTime old\n$oldestFiles|filecount=$filecount;$warning;$critical"
 exit $returnState
 
