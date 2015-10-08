@@ -20,6 +20,8 @@
 #    along with this program; if not, write to the Free Software
 #    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA    02111-1307    USA
 #
+# 2015-10-08: Oliver Skibbe oliver.skibbe (at) mdkn.de
+#	- updated help
 # 2015-03-09: Oliver Skibbe oliver.skibbe (at) mdkn.de
 #	- disabled epn, leads to a warning with using mod_gearman
 #	- disabled warning for using given/when
@@ -50,8 +52,6 @@ use Getopt::Std;
 use Getopt::Long qw(:config no_ignore_case bundling);
 use feature qw/switch/;
 no if $] >= 5.018, 'warnings', "experimental::smartmatch";
-# DEBUGGING PURPOSE 
-#use Data::Dumper;
 
 # Do we have enough information?
 if (@ARGV < 1) {
@@ -597,9 +597,9 @@ sub parse_args
 		'privpassword|X:s' 	=> \$priv_password,
 		'privprotocol|x:s' 	=> \$priv_prot,
 		'help|?!'		=> \$help,
-	) or pod2usage(-exitval => 3, -verbose => 0);
+	);
 
-	pod2usage(-exitval => 3, -verbose => 2) if $help;
+	usage() if $help;
 
   	return (
 		$ip, $community, $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $with_external_sensor
@@ -613,15 +613,22 @@ sub parse_args
 sub usage {
     print << "USAGE";
 -----------------------------------------------------------------	 
-$script v$script_version
-
 Monitors APC SmartUPS via AP9617 SNMP management card.
 
-Usage: $script -H <hostname> -C <community> [...]
+Usage: -H <hostname> -C <community> [...]
 
-Options: -H 	Hostname or IP address
-         -C 	Community (default is public)
-         -S 	with external sensor (like PowerNet)
+Options: 
+         -H     Hostname or IP address
+         -S     with external sensor (like PowerNet)
+   SNMPv1/2
+         -C     Community (default is public)
+   SNMPv3
+         -A     Authentication password
+         -a     Authentication protocl
+         -X     Private password
+         -x     Private procotol
+
+
 	 
 -----------------------------------------------------------------	 
 Copyright 2004 Altinity Limited	 
