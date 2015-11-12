@@ -82,7 +82,7 @@ function get_status ( $max, $cur, $warn, $crit ) {
 		}
 	} else {
 		if ( $cur == -3 ) {
-			return 0;
+			return 2;
 	        //Ricoh printers use -100 value to indicate 20%-1% or 10%-1% remaining toner
         	} else if ( $cur == -2 || $cur == -100 ) {
             		return 1;
