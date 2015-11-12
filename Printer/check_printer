@@ -144,7 +144,7 @@ function snmp_walk($oid) {
 		// snmp3_walk ( string $host , string $sec_name , string $sec_level , string $auth_protocol , string $auth_passphrase , string $priv_protocol , string $priv_passphrase , string $object_id )
 		$value = @snmp3_walk($ip, $sec_name ,$sec_level ,$auth_protocol ,$auth_passphrase ,$priv_protocol ,$priv_passphrase, $oid);
 	} else if ( $snmpversion == 'v2c' ) {
-		$value = @snmp2_walk($ip, $community, $oid);
+		$value = @snmp2_real_walk($ip, $community, $oid);
 	} else {
 		$value = @snmpwalkoid($ip, $community, $oid);
 	}
@@ -508,8 +508,8 @@ switch ( $command ) {
 		$mydata = array();
 		foreach ( $rawdata as $key => $val ) {
 				
-            //if ( !(preg_match ( "@SNMPv2-SMI::mib-2.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match ) || preg_match ( "@iso.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match )))
-            		if ( !(preg_match ( "@1.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match ) || preg_match ( "@iso.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match )))
+            if ( !(preg_match ( "@SNMPv2-SMI::mib-2.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match ) || preg_match ( "@iso.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match )))
+            //		if ( !(preg_match ( "@1.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match ) || preg_match ( "@iso.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match )))
 				nagios_return ( 3, "Internal error" );
 
 			$mydata[(int)$match['index']][(int)$match['num']] = $val;
