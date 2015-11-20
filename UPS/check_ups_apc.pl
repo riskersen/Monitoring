@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# nagios -epn
+# nagios: -epn
 #    Copyright (C) 2004 Altinity Limited
 #    E: info@altinity.com    W: http://www.altinity.com/
 #    Modified by pierre.gremaud@bluewin.ch
@@ -20,6 +20,8 @@
 #    along with this program; if not, write to the Free Software
 #    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA    02111-1307    USA
 #
+# 2015-11-20: Oliver Skibbe oliskibbe (at) gmail.com
+#	- disabling nagios embedded perl interpreter
 # 2015-10-08: Oliver Skibbe oliver.skibbe (at) mdkn.de
 #	- updated help
 # 2015-03-09: Oliver Skibbe oliver.skibbe (at) mdkn.de
