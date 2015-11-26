@@ -1,9 +1,14 @@
 #!/bin/bash
-# Author: oliver.skibbe (at) mdkn.de
-# Date: 2015-10-06
+# Author: oliskibbe (at) gmail.com
+# Date: 2015-11-26
 # Purpose: return warning or critical if file count of specified path is higher then limits
 # Also checks if a path is a mounted path
 # Changelog:
+#		2015-11-26
+#		- fixed check for count if alert should be for 1 file
+#		- prettified output of timestamps, more human readable
+#		- Multiline Output in CSV style
+#		Older:
 #		- reformated code
 # 
 # 		- improved code
@@ -109,34 +114,41 @@ if [ $warning -gt $critical ] ; then
 fi
 
 # find all files
-oldestFiles=$(find "$path" -maxdepth $maxdepth -type f -printf '%T@ %p\n' | grep -E -i $grepOpt "$filelist" | sort -k 1n)
+oldestFiles=$(find "$path" -maxdepth $maxdepth -type f -printf '%TY-%Tm-%Td %TH:%TM;%p\n' | grep -E -i $grepOpt "$filelist" | sort -k 1n)
 
 # get file count
-filecount=$(echo "$oldestFiles" | wc -l)
+filecount=$(echo "$oldestFiles" | grep -v '^$' | wc -l)
 
-# get oldest file
-oldestFile=$(echo "$oldestFiles" | head -n 1)
+if [ $filecount -ge 1 ] ; then
+	# get oldest file
+	oldestFile=$(echo "$oldestFiles" | head -n 1 | awk -F';' '{print $2}')
 
-# double awk because newer bashs append micro seconds 
-oldestFileDate=$(echo "$oldestFile" | awk '{print $1}' | awk -F "." '{print $1}')
-currentDate=$(date +%s)
+	# double awk because newer bashs append micro seconds 
+	oldestFileDate=$(find "$oldestFile" -type f -printf '%T@' | awk -F "." '{print $1}')
 
-# calculate time
-oldestFile=$(echo $oldestFile | awk '{print $2}')
-oldestFileTime=$(($currentDate - $oldestFileDate))
+	# calculate time (unix timestamps)
+	oldestFileTime=$(($(date +%s) - $oldestFileDate))
 
-if [ $filecount -gt $critical ] ; then
-	returnString="CRITICAL"
-	returnState=$STATE_CRITICAL
-elif [ $filecount -gt $warning ] ; then
-	returnString="WARNING"
-	returnState=$STATE_WARNING
+	# unix timestamps to human readable
+	convertTime $oldestFileTime
+	returnString=", oldest file \"$(basename $oldestFile)\" is $oldestFileTime old\n$oldestFiles"
 else
-	returnString="OK"
-	returnState=$STATE_OK
+	returnString=""
 fi
 
-convertTime $oldestFileTime
-echo -e "$returnString: file count is $filecount, oldest file \"$(basename $oldestFile)\" is $oldestFileTime old\n$oldestFiles|filecount=$filecount;$warning;$critical"
+
+if [ $filecount -ge $critical ] ; then
+	stateString="CRITICAL"
+	returnState=$STATE_CRITICAL
+elif [ $filecount -ge $warning ] ; then
+	stateString="WARNING"
+	returnState=$STATE_WARNING
+else
+	stateString="OK"
+	returnState=$STATE_OK
+fi
+perfString="filecount=$filecount;$warning;$critical"
+
+echo -e "$stateString: file count is ${filecount}${returnString}|$perfString"
 exit $returnState
 
