@@ -549,8 +549,9 @@ switch ( $command ) {
 
 		// If there is no message text (Kyocera) or all messages were filtered show display
 		if ( strlen ( trim ( $str ) ) < 2 )
-			$str = $critical_codes_found . $warning_codes_found . $display;
+			$str = $display;
 
+		$str =  $critical_codes_found . $warning_codes_found . $str;
 		nagios_return ( $ret, $str );
 	break;
 	case 'accounting': 
