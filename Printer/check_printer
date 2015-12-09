@@ -192,6 +192,7 @@ if(!extension_loaded("snmp")) {
 
 snmp_set_quick_print ( true );
 snmp_set_valueretrieval(SNMP_VALUE_PLAIN);
+snmp_set_oid_output_format(SNMP_OID_OUTPUT_NUMERIC);
 
 if ( !$_SERVER['argv'][1] || !$_SERVER['argv'][2] || !$_SERVER['argv'][3] || !$_SERVER['argv'][4]) {
     	help();
@@ -233,7 +234,7 @@ switch ( $command ) {
 		if ( $name === FALSE || $count === FALSE || $serial === FALSE)
 			nagios_return ( 3, "Counter ".$num." does not exist!" );
 
-		nagios_return ( 99, $serial . ";" . $name.": ".$count, array ( 'pagecount' => array ( 'value' => $count ) ) );
+		nagios_return ( 99, "S/NO: " . $serial . ";" . $name.": ".$count, array ( 'pagecount' => array ( 'value' => $count ) ) );
 	break;
 	case 'pagecount':
 	case 'counter':
@@ -477,10 +478,10 @@ switch ( $command ) {
  */
 		//$critical_codes = array ( 8, 9, 11, 13, 21, 22, 26, 28, 30, 32, 33, 34, 901, 1101, 1114, 1115, 1301 );
 		$critical_codes = array ( 8, 1101, 1102, 1112, 1114, 1115 );
-		$ok_codes = array (  4, 6, 7, 19, 20, 23, 24, 25, 27, 35, 36, 37, 38, 255, 502, 503, 504, 505, 506, 507, 802, 803, 804, 805, 806, 807, 808, 809, 810, 1001, 1002, 1005, 1106, 1107, 1108, 1111, 1113, 1302, 1304, 1501, 1502, 1503, 1504, 1505, 1506, 1509, 40000 );
+		$ok_codes = array (  4, 6, 7, 19, 20, 23, 24, 25, 27, 35, 36, 37, 38, 502, 503, 504, 505, 506, 507, 802, 803, 804, 805, 806, 807, 808, 809, 810, 1001, 1002, 1005, 1106, 1107, 1108, 1111, 1113, 1302, 1304, 1501, 1502, 1503, 1504, 1505, 1506, 1509, 40000 );
 		$location_ignore_codes = array ( 10003, 10033, 10034 );
 		$location_ok_codes = array ( 13100, 13200, 13300, 13400, 13500 );
-		$ignore_codes = array ( -1 );
+		$ignore_codes = array ();
 
 		if ( $_SERVER['argc'] < 5 )
 			nagios_return ( 3, "Too few parameter!" );
@@ -509,7 +510,7 @@ switch ( $command ) {
 		foreach ( $rawdata as $key => $val ) {
 				
             //if ( !(preg_match ( "@SNMPv2-SMI::mib-2.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match ) || preg_match ( "@iso.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match )))
-            		if ( !(preg_match ( "@1.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match ) || preg_match ( "@iso.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match )))
+            		if ( !(	preg_match ( "@1.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match ) || preg_match ( "@iso.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match )))
 				nagios_return ( 3, "Internal error" );
 
 			$mydata[(int)$match['index']][(int)$match['num']] = $val;
@@ -520,6 +521,8 @@ switch ( $command ) {
 		foreach ( $mydata as $msg ) {
 			$location = (int) $msg[6];
 			$code = (int) $msg[7];
+			$critical_codes_found = "Crit codes: ";
+			$warning_codes_found = "Warn codes: ";
 
 			if ( $code == 1 && $location == 0 && preg_match ( '/{(\d+)}/', $msg[8], $match ) ) {
 				$location = (int) $match[1];
@@ -536,15 +539,17 @@ switch ( $command ) {
 			 ( $location > 0 && in_array ( $location, $location_ok_codes ) ) )
 				continue;
 			if ( $code > 0 && in_array($code, $critical_codes) ) {
+				$critical_codes_found .= $code . ",";
 				$ret = 2;
 			} else {
+				$warning_codes_found .= $code . ",";
 				$ret = max ( $ret, 1 );
 			}
 		}
 
 		// If there is no message text (Kyocera) or all messages were filtered show display
 		if ( strlen ( trim ( $str ) ) < 2 )
-			$str = $display;
+			$str = $critical_codes_found . $warning_codes_found . $display;
 
 		nagios_return ( $ret, $str );
 	break;
