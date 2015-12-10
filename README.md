@@ -13,6 +13,11 @@ Monitoring plugins and helper for Nagios/icinga/xxx
 - check_mssql_jobs - Microsoft SQL Server
 - check_fortigate.pl - Fortigate
 - check_dwd.php - Check "Deutschen Wetterdienst" for weather warning 
+- check_sge.vbs - Check Safeguard Enterprise state via nsclient
+- check_sgn_licence.php - Check Safeguard Enterprise licence state
+- check_dns.ps1 - DNS Check for Windows Hosts, to be called via nsclient
 
 ## Helper
 - Nagios Email Repoter - Scheduled reporting mails
+- MySQL Backup - mysql backup with nsca support for local and remote hosts
+- SQLite Backup - sqlite backup with nsca support for local and remote hosts
