@@ -483,6 +483,9 @@ switch ( $command ) {
 		$location_ok_codes = array ( 13100, 13200, 13300, 13400, 13500 );
 		$ignore_codes = array ( -1 );
 
+		$critical_codes_found = "";
+		$warning_codes_found = "";
+
 		if ( $_SERVER['argc'] < 5 )
 			nagios_return ( 3, "Too few parameter!" );
 
@@ -521,8 +524,6 @@ switch ( $command ) {
 		foreach ( $mydata as $msg ) {
 			$location = (int) $msg[6];
 			$code = (int) $msg[7];
-			$critical_codes_found = "Crit codes: ";
-			$warning_codes_found = "Warn codes: ";
 
 			if ( $code == 1 && $location == 0 && preg_match ( '/{(\d+)}/', $msg[8], $match ) ) {
 				$location = (int) $match[1];
@@ -551,7 +552,9 @@ switch ( $command ) {
 		if ( strlen ( trim ( $str ) ) < 2 )
 			$str = $display;
 
-		$str =  $critical_codes_found . $warning_codes_found . $str;
+
+		$str = ( strlen($warning_codes_found) > 0 ) ? "Warning Codes: " . $warning_codes_found . $str : $str;
+		$str = ( strlen($critical_codes_found) > 0 ) ? "Critical Codes: " . $critical_codes_found . $str : $str;
 		nagios_return ( $ret, $str );
 	break;
 	case 'accounting': 
