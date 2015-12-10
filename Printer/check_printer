@@ -522,8 +522,8 @@ switch ( $command ) {
 		$ret = 0;
 
 		foreach ( $mydata as $msg ) {
-			$location = (int) $msg[6];
-			$code = (int) $msg[7];
+			$location = (int) trim($msg[6]);
+			$code = (int) trim($msg[7]);
 
 			if ( $code == 1 && $location == 0 && preg_match ( '/{(\d+)}/', $msg[8], $match ) ) {
 				$location = (int) $match[1];
