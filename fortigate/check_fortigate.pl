@@ -4,6 +4,7 @@
 #
 # Tested on: FortiGate 100D / FortiGate 300C (both 5.0.3)
 # Tested on: FortiGate 200B (5.0.6), Fortigate 800C (5.2.2)
+# Tested on: FortiGate 300D (5.2.5)
 #
 # Author: Oliver Skibbe (oliskibbe (at) gmail.com)
 # Date: 2015-04-08
@@ -42,6 +43,9 @@
 # Release 1.5.1 (2015-04-14) Alexandre Rigaud (arigaud.prosodie.cap (at) free.fr)
 # - enabled ipsec vpn check
 # - added check hardware
+# Release 1.5.2 (2016-01-28) Claudio Kuenzler (www.claudiokuenzler.com)
+# - cluster bugfix (use dedicated OID to figure out master device)
+# - device name bugfix (use dns name instead of snmp name)
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -66,7 +70,7 @@ use Pod::Usage;
 use Socket;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.5.1";
+my $script_version = "1.5.2";
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
@@ -111,7 +115,7 @@ if ( $error ne "" ) {
 }
 
 ## OIDs ##
-my $oid_unitdesc         = ".1.3.6.1.2.1.1.1.0";                   # Location of Fortinet device description... (String)
+my $oid_unitdesc         = ".1.3.6.1.2.1.1.5.0";                   # Location of Fortinet device dns name... (String)
 my $oid_serial           = ".1.3.6.1.4.1.12356.100.1.1.1.0";       # Location of Fortinet serial number (String)
 my $oid_cpu              = ".1.3.6.1.4.1.12356.101.13.2.1.1.3";    # Location of cluster member CPU (%)
 my $oid_net              = ".1.3.6.1.4.1.12356.101.13.2.1.1.5";    # Location of cluster member Net (kbps)
@@ -122,6 +126,7 @@ my $oid_ses              = ".1.3.6.1.4.1.12356.101.13.2.1.1.6";    # Location of
 my $oid_cluster_type     = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of Fortinet cluster type (String)
 my $oid_cluster_serials  = ".1.3.6.1.4.1.12356.101.13.2.1.1.2";    # Location of Cluster serials (String)
 my $oid_cluster_sync_state = ".1.3.6.1.4.1.12356.101.13.2.1.1.12"; # Location of cluster sync state (int)
+my $oid_cluster_master   = ".1.3.6.1.4.1.12356.101.13.2.1.1.16.2";   # Location of cluster master serial (String)
 
 # VPN OIDs
 # XXX to be checked
@@ -158,6 +163,8 @@ my $perf;                                             # performance data
 my $curr_device = get_snmp_value($session, $oid_unitdesc);
 # Check SNMP connection and get the serial of the device...
 my $curr_serial = get_snmp_value($session, $oid_serial);
+# Check SNMP connection and get the serial of the cluster master...
+my $cluster_master = get_snmp_value($session, $oid_cluster_master);
 
 switch ( lc($type) ) {
   case "cpu" { ($return_state, $return_string) = get_health_value($oid_cpu, "CPU", "%"); }
@@ -252,7 +259,7 @@ sub get_health_value {
   }
 
   $perf = "|'" . lc($label) . "'=" . $value . $UOM . ";" . $warn . ";" . $crit;
-  $return_string = $return_state . ": " . $curr_device . " (Master: " . $curr_serial .") " . $return_string . $perf;
+  $return_string = $return_state . ": " . $curr_device . " (Master: " . $cluster_master .") " . $return_string . $perf;
 
   return ($return_state, $return_string);
 } # end health value
@@ -331,13 +338,13 @@ sub get_cluster_state {
     }
   }
   # if preferred master serial is not master
-  if ( $pri_serial && ( $pri_serial ne $curr_serial ) ) {
+  if ( $pri_serial && ( $pri_serial ne $cluster_master ) ) {
     $return_string = $return_string . ", preferred master " . $pri_serial . " is not master!";
     $return_state = "CRITICAL";
   }
 
   # Write an output string...
-  $return_string = $return_state . ": " . $curr_device . " (Master: " . $curr_serial . ", Slave: " . $help_serials[$#help_serials] . "): " . $return_string . ", " . $sync_string;
+  $return_string = $return_state . ": " . $curr_device . " (Master: " . $cluster_master . ", Slave: " . $help_serials[$#help_serials] . "): " . $return_string . ", " . $sync_string;
   return ($return_state, $return_string);
 } # end cluster state
 
@@ -391,7 +398,7 @@ sub get_vpn_state {
   }
 
   # Write an output string...
-  $return_string = $return_state . ": " . $curr_device . " (Master: " . $curr_serial .")";
+  $return_string = $return_state . ": " . $curr_device . " (Master: " . $cluster_master .")";
 
   if ($vpnmode ne "ipsec") {
     #Add the SSL tunnel count
