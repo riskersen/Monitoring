@@ -164,7 +164,12 @@ my $curr_device = get_snmp_value($session, $oid_unitdesc);
 # Check SNMP connection and get the serial of the device...
 my $curr_serial = get_snmp_value($session, $oid_serial);
 # Check SNMP connection and get the serial of the cluster master...
-my $cluster_master = get_snmp_value($session, $oid_cluster_master);
+my $cluster_master_serial = get_snmp_value($session, $oid_cluster_master);
+if ($cluster_master_serial) {
+  my $cluster_master = $cluster_master_check }
+else {
+  my $cluster_master = $curr_serial
+}
 
 switch ( lc($type) ) {
   case "cpu" { ($return_state, $return_string) = get_health_value($oid_cpu, "CPU", "%"); }
