@@ -1,12 +1,15 @@
 #!/usr/bin/perl
 # nagios: -epn
+# icinga: -epn
 # This Plugin checks the cluster state of FortiGate
 #
+# Tested on: Fortigate 80C (5.0.7b)
 # Tested on: FortiGate 100D / FortiGate 300C (both 5.0.3)
 # Tested on: FortiGate 200B (5.0.6), Fortigate 800C (5.2.2)
+# Tested on: FortiAnalyzer (5.2.4)
 #
 # Author: Oliver Skibbe (oliskibbe (at) gmail.com)
-# Date: 2015-04-08
+# Date: 2016-02-25
 #
 # Changelog:
 # Release 1.0 (2013)
@@ -42,6 +45,11 @@
 # Release 1.5.1 (2015-04-14) Alexandre Rigaud (arigaud.prosodie.cap (at) free.fr)
 # - enabled ipsec vpn check
 # - added check hardware
+# Release 1.5.2 (2016-02-25) Oliver Skibbe (oliskibbe (at) gmail.com)
+# - fixed pod2usage
+# Release 1.6.0 (2016-02-25) Oliver Skibbe (oliskibbe (at) gmail.com)
+# - added checks for FortiAnalyer (fazcpu, fazmem, fazdisk)
+# - added option -h for help output
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -64,9 +72,10 @@ use Switch;
 use Getopt::Long qw(:config no_ignore_case bundling);
 use Pod::Usage;
 use Socket;
+use POSIX;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.5.1";
+my $script_version = "1.6.0";
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
@@ -118,6 +127,13 @@ my $oid_net              = ".1.3.6.1.4.1.12356.101.13.2.1.1.5";    # Location of
 my $oid_mem              = ".1.3.6.1.4.1.12356.101.13.2.1.1.4";    # Location of cluster member Mem (%)
 my $oid_ses              = ".1.3.6.1.4.1.12356.101.13.2.1.1.6";    # Location of cluster member Sessions (int)
 
+## FortiAnalyzer OIDs ##
+my $oid_faz_cpu_used     = ".1.3.6.1.4.1.12356.103.2.1.1.0";       # Location of CPU for FortiAnalyzer (%)
+my $oid_faz_mem_used     = ".1.3.6.1.4.1.12356.103.2.1.2.0";       # Location of Memory used for FortiAnalyzer (kb)
+my $oid_faz_mem_avail    = ".1.3.6.1.4.1.12356.103.2.1.3.0";       # Location of Memory available for FortiAnalyzer (kb)
+my $oid_faz_disk_used    = ".1.3.6.1.4.1.12356.103.2.1.4.0";       # Location of Disk used for FortiAnalyzer (Mb)
+my $oid_faz_disk_avail   = ".1.3.6.1.4.1.12356.103.2.1.5.0";       # Location of Disk available for FortiAnalyzer (Mb)
+
 # Cluster
 my $oid_cluster_type     = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of Fortinet cluster type (String)
 my $oid_cluster_serials  = ".1.3.6.1.4.1.12356.101.13.2.1.1.2";    # Location of Cluster serials (String)
@@ -166,7 +182,10 @@ switch ( lc($type) ) {
   case "ses" { ($return_state, $return_string) = get_health_value($oid_ses, "Session", ""); }
   case "vpn" { ($return_state, $return_string) = get_vpn_state(); }
   case "wtp" { ($return_state, $return_string) = get_wtp_state("%"); }
-  case "hw" { ($return_state, $return_string) = get_hw_state("%"); }
+  case "hw"  { ($return_state, $return_string) = get_hw_state("%"); }
+  case "fazcpu" { ($return_state, $return_string) = get_health_value($oid_faz_cpu_used, "CPU", "%"); }
+  case "fazmem" { ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%"); }
+  case "fazdisk" { ($return_state, $return_string) = get_faz_health_value($oid_faz_disk_used, $oid_faz_disk_avail, "Disk", "%"); }
   else { ($return_state, $return_string) = get_cluster_state(); }
 }
 
@@ -226,13 +245,15 @@ sub get_snmp_session_v3 {
 
 sub get_health_value {
   my $label = $_[1];
-  my $UOM = $_[2];
+  my $UOM   = $_[2];
  
   if ( $slave == 1 ) {
-    $oid = $_[0] . ".2";
-    $label = "slave_" . $label;
+      $oid = $_[0] . ".2";
+      $label = "slave_" . $label;
+  } elsif ( $type =~ /^faz.*/ ) {
+      $oid = $_[0];
   } else {
-    $oid = $_[0] . ".1";
+      $oid = $_[0] . ".1";
   }
 
   $value = get_snmp_value($session, $oid);
@@ -256,6 +277,38 @@ sub get_health_value {
 
   return ($return_state, $return_string);
 } # end health value
+
+sub get_faz_health_value {
+  my $used_oid = $_[0];
+  my $avail_oid = $_[1];
+  my $label = $_[2];
+  my $UOM   = $_[3];
+
+  my $used_value = get_snmp_value($session, $used_oid);
+  my $avail_value = get_snmp_value($session, $avail_oid);
+
+  # strip any leading or trailing non zeros
+  $used_value =~ s/\D*(\d+)\D*/$1/g;
+  $avail_value =~ s/\D*(\d+)\D*/$1/g;
+
+  $value = floor($used_value/$avail_value*100);
+
+  if ( $value >= $crit ) {
+    $return_state = "CRITICAL";
+    $return_string = $label . " is critical: " . $value . $UOM;
+  } elsif ( $value >= $warn ) {
+    $return_state = "WARNING";
+    $return_string = $label . " is warning: " . $value . $UOM;
+  } else {
+    $return_state = "OK";
+    $return_string = $label . " is okay: " . $value. $UOM;
+  }
+
+  $perf = "|'" . lc($label) . "'=" . $value . $UOM . ";" . $warn . ";" . $crit;
+  $return_string = $return_state . ": " . $curr_device . " (Master: " . $curr_serial .") " . $return_string . $perf;
+
+  return ($return_state, $return_string);
+} # end faz health value
 
 sub get_cluster_state {
   my @help_serials; # helper array
@@ -576,13 +629,13 @@ sub parse_args {
   my $type          = "status";
   my $warn          = 80;
   my $crit          = 90;
-  my $slave         = 0;
+  my $slave         = undef;
   my $vpnmode       = "both";
   my $mode          = 2;
   my $path          = "/usr/lib/nagios/plugins/FortiSerial";
   my $help          = 0;
 
-  pod2usage(-message => "UNKNOWN: No Arguments given", -exitval => 3, -verbose => 0) if ( !@ARGV );
+  pod2usage(-message => "UNKNOWN: No Arguments given", -exitval => 3,  -sections => 'SYNOPSIS' ) if ( !@ARGV );
 
   GetOptions(
           'host|H=s'         => \$ip,
@@ -603,8 +656,8 @@ sub parse_args {
           'slave|s:1'        => \$slave,
           'reset|R:1'        => \$reset_file,
           'path|p:s'         => \$path,
-          'help|?!'          => \$help,
-  ) or pod2usage(-exitval => 3, -verbose => 0);
+          'help|h!'          => \$help,
+  ) or pod2usage(-exitval => 3, -sections => 'OPTIONS' );
 
   pod2usage(-exitval => 3, -verbose => 3) if $help;
 
@@ -617,121 +670,156 @@ sub parse_args {
     $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path
   );
 }
-__END__
+
 =head1 NAME
+
 Check Fortinet FortiGate Appliances
+
 =head1 SYNOPSIS
-=over
-=item S<check_fortigate.pl -H -C -T [-w|-c|-S|-s|-R|-M|-V|-U|-A|-a|-X|-x-?]>
-Options:
--H --host STRING or IPADDRESS Check interface on the indicated host
--P --port INTEGER Port of indicated host, defaults to 161
--v --version STRING SNMP Version, defaults to SNMP v2, v1-v3 supported
--T --type STRING CPU, MEM, Ses, VPN, wtp, Cluster, hw
--S --serial STRING Primary serial number
--s --slave get values of slave
--w --warning INTEGER Warning threshold, applies to cpu, mem, session wtp.
--c --critical INTEGER Critical threshold, applies to cpu, mem, session, wtp.
--R --reset Resets ip file (cluster only)
--M --mode STRING Output-Mode: 0 => just print, 1 => print and show failed tunnel, 2 => critical
--V --vpnmode STRING VPN-Mode: both => IPSec & SSL/OpenVPN, ipsec => IPSec only, ssl => SSL/OpenVPN only
--p --path STRING Path to store serial filenames, default /usr/lib/nagios/plugins/FortiSerial
-SNMP v1/v2c only
--C --community STRING Community-String for SNMP, only at SNMP v1/v2c, defaults to public
-SNMP v3 only
-SNMP v3 only
--U --username STRING username 
--A --authpassword STRING auth password
--a --authprotocol STRING auth algorithm, defaults to sha
--X --privpassword STRING private password
--x --privprotocol STRING private algorithm, defaults to aes
--? --help Returns full help text
+
+=over 1
+
+=item B<check_fortigate.pl -H -C -T [-w|-c|-S|-s|-R|-M|-V|-U|-A|-a|-X|-x|-h|-?]>
+
 =back
+
 =head1 OPTIONS
-=over
+
+=over 4
+
 =item B<-H|--host>
+
 STRING or IPADDRESS - Check interface on the indicated host
+
 =item B<-P|--port>
+
 INTEGER - SNMP Port on the indicated host, defaults to 161
+
 =item B<-v|--version>
 INTEGER - SNMP Version on the indicated host, possible values 1,2,3 and defaults to 2
+
 =back
-=head3 SNMP v3
-=over
+
+=head2 SNMP V3
+
+=over 1
+
 =item B<-U|--username>
 STRING - username 
+
 =item B<-A|--authpassword>
 STRING - authentication password
+
 =item B<-a|--authprotocol>
 STRING - authentication algorithm, defaults to sha
+
 =item B<-X|--privpassword>
 STRING - private password
+
 =item B<-x|--privprotocol>
 STRING - private algorithm, defaults to aes
+
 =back
-=head3 SNMP v1/v2c
-=over
+
+=head2 SNMP v1/v2c
+
+=over 1
+
 =item B<-C|--community>
 STRING - Community-String for SNMP, defaults to public only used with SNMP version 1 and 2
+
 =back
-=head3 Other
+
+=head2 Other
+
 =over
+
 =item B<-T|--type>
-STRING - CPU, MEM, Ses, VPN, net, Cluster, wtp, hw
+STRING - CPU, MEM, Ses, VPN, net, Cluster, wtp, hw, fazcpu, fazmem, fazdisk
+
 =item B<-S|--serial>
 STRING - Primary serial number.
+
 =item B<-s|--slave>
 BOOL - Get values of slave
+
 =item B<-w|--warning>
-INTEGER - Warning threshold, applies to cpu, mem, session.
+INTEGER - Warning threshold, applies to cpu, mem, session, fazcpu, fazmem, fazdisk.
+
 =item B<-c|--critical>
-INTEGER - Critical threshold, applies to cpu, mem, session.
+INTEGER - Critical threshold, applies to cpu, mem, session fazcpu, fazmem, fazdisk.
+
 =item B<-R|--reset>
 BOOL - Resets ip file (cluster only)
+
 =item B<-M|--mode>
 STRING - Output-Mode: 0 => just print, 1 => print and show failed tunnel, 2 => critical
+
 =item B<-V|--vpnmode>
 STRING - VPN-Mode: both => IPSec & SSL/OpenVPN, ipsec => IPSec only, ssl => SSL/OpenVPN only
+
 =item B<-p|--path>
 STRING - Path to store serial filenames
+
 =back
+
 =head1 DESCRIPTION
+
 This plugin checks Fortinet FortiGate devices via SNMP
+
 =head2 From Web
+
 =over 4
-=item 1. Select Network -> Interface -> Local interface
-=item 2. Administrative Access: Enable SNMP
-=item 3. Select Config -> SNMP
-=item 4. Enable SNMP, fill your details
-=item 5. SNMP v1/v2c: Create new
-=item 6. Configure for your needs, Traps are not required for this plugin!
+
+=item 1.
+Select Network -> Interface -> Local interface
+
+=item 2.
+Administrative Access: Enable SNMP
+
+=item 3.
+Select Config -> SNMP
+
+=item 4. 
+Enable SNMP, fill your details
+
+=item 5. 
+SNMP v1/v2c: Create new
+
+=item 6. 
+Configure for your needs, Traps are not required for this plugin!
+
 =back
+
 =head2 From CLI
-config system interface
-edit "internal"
-set allowaccess ping https ssh snmp fgfm
-next
-end
-config system snmp sysinfo
-set description "DMZ1 FortiGate 300C"
-set location "Room 404"
-set conctact-info "BOFH"
-set status enable
-end
-config system snmp community
-edit 1
-set events cpu-high mem-low fm-if-change
-config hosts
-edit 1
-set interface "internal"
-set ip %SNMP Client IP%
-next
-end
-set name "public"
-set trap-v1-status disable
-set trap-v2c-status disable
-next
-end
+
+    config system interface
+    edit "internal"
+    set allowaccess ping https ssh snmp fgfm
+    next
+    end
+    config system snmp sysinfo
+    set description "DMZ1 FortiGate 300C"
+    set location "Room 404"
+    set conctact-info "BOFH"
+    set status enable
+    end
+    config system snmp community
+    edit 1
+    set events cpu-high mem-low fm-if-change
+    config hosts
+    edit 1
+    set interface "internal"
+    set ip %SNMP Client IP%
+    next
+    end
+    set name "public"
+    set trap-v1-status disable
+    set trap-v2c-status disable
+    next
+    end
+
 Thats it!
+
 =cut
-# EOF
+
