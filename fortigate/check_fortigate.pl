@@ -14,7 +14,8 @@
 # Changelog:
 # Release 1.0 (2013)
 # - initial release (cluster, cpu, memory, session support)
-# - added vpn support, based on check_fortigate_vpn.pl: Copyright (c) 2009 Gerrit Doornenbal, g(dot)doornenbal(at)hccnet(dot)nl
+# - added vpn support, based on check_fortigate_vpn.pl: 
+#   Copyright (c) 2009 Gerrit Doornenbal, g(dot)doornenbal(at)hccnet(dot)nl
 # Release 1.4 (2015-02-26) Oliver Skibbe (oliskibbe (at) gmail.com)
 # - some code cleanup
 # - whitespace fixes
@@ -49,7 +50,10 @@
 # - fixed pod2usage
 # Release 1.6.0 (2016-02-25) Oliver Skibbe (oliskibbe (at) gmail.com)
 # - added checks for FortiAnalyer (fazcpu, fazmem, fazdisk)
-# - added option -h for help output
+# Release 1.6.1 (2016-05-03) Oliver Skibbe (oliskibbe (at) gmail.com)
+# - added retrieval of firmware version to disable sync check on older firmware
+#   versions
+# - fixed cluster check for standalone machines 
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -122,6 +126,7 @@ if ( $error ne "" ) {
 ## OIDs ##
 my $oid_unitdesc         = ".1.3.6.1.2.1.1.1.0";                   # Location of Fortinet device description... (String)
 my $oid_serial           = ".1.3.6.1.4.1.12356.100.1.1.1.0";       # Location of Fortinet serial number (String)
+my $oid_firmware         = ".1.3.6.1.4.1.12356.101.4.1.1.0";       # Location of Fortinet firmware
 my $oid_cpu              = ".1.3.6.1.4.1.12356.101.13.2.1.1.3";    # Location of cluster member CPU (%)
 my $oid_net              = ".1.3.6.1.4.1.12356.101.13.2.1.1.5";    # Location of cluster member Net (kbps)
 my $oid_mem              = ".1.3.6.1.4.1.12356.101.13.2.1.1.4";    # Location of cluster member Mem (%)
@@ -183,6 +188,7 @@ switch ( lc($type) ) {
   case "vpn" { ($return_state, $return_string) = get_vpn_state(); }
   case "wtp" { ($return_state, $return_string) = get_wtp_state("%"); }
   case "hw"  { ($return_state, $return_string) = get_hw_state("%"); }
+  case "firmware" { ($return_state, $return_string) = get_firmware_state(); }
   case "fazcpu" { ($return_state, $return_string) = get_health_value($oid_faz_cpu_used, "CPU", "%"); }
   case "fazmem" { ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%"); }
   case "fazdisk" { ($return_state, $return_string) = get_faz_health_value($oid_faz_disk_used, $oid_faz_disk_avail, "Disk", "%"); }
@@ -242,6 +248,24 @@ sub get_snmp_session_v3 {
                           );
   return ($session, $error);
 } # end get snmp session
+
+sub get_firmware_state {
+  my $value = get_snmp_value($session, $oid_firmware);
+
+  if ( $warn != 80 && $value !~ /$warn/ ) {
+    $return_state = "WARNING";
+    $return_string = "current firmware version ( " . $value . " ) differs from requested version: " . $warn;
+  } elsif ( $crit != 90 && $value !~ /$crit/ ) {
+    $return_state = "CRITICAL";
+    $return_string = "current firmware version ( " . $value . " ) differs from requested version: " . $crit;
+  } else {
+    $return_state = "OK";
+    $return_string = "current firmware version: " . $value;
+  }
+
+  $return_string = $return_state . ": " . $return_string;
+  return ($return_state, $return_string);
+}
 
 sub get_health_value {
   my $label = $_[1];
@@ -321,6 +345,7 @@ sub get_cluster_state {
   }
 
   # get all cluster member serials
+  my $firmware_version = get_snmp_value($session, $oid_firmware);
   my %snmp_serials = %{get_snmp_table($session, $oid_cluster_serials)};
   my $cluster_type = get_snmp_value($session, $oid_cluster_type);
   my %cluster_types = (
@@ -334,63 +359,70 @@ sub get_cluster_state {
   );
   my $sync_string = "Sync-State: " . $cluster_sync_states{1};
 
-  # first time, write cluster members to helper file
-  if ( ! -e $filename || $reset_file ) {
-    # open file handle to write (create/truncate)
-    open (SERIALHANDLE,"+>$filename") || die "Error while creating $filename";
-    # write serials to file
-    while (($oid, $value) = each (%snmp_serials)) {
-      print (SERIALHANDLE $value . "\n");
-    }
-  }
-
-  # snmp serials
-  while (($oid, $value) = each (%snmp_serials)) {
-    chomp; # remove "\n" if exists
-    push @help_serials, $value;
-  }
-
-  # if less then 2 nodes found: critical
-  if ( scalar(@help_serials) < 2 ) {
-    $return_string = "HA (" . $cluster_types{$cluster_type} . ") inactive, single node found: " . $curr_serial;
-    $return_state = "CRITICAL";
-  # else check if there are differences in ha nodes
-  } else {
-    # open existing serials
-    open ( SERIALHANDLE, "$filename") || die "Error while opening file $filename";
-    my @file_serials = <SERIALHANDLE>; # push lines into file_serials
-    chomp(@file_serials);              # remove "\n" if exists in array elements
-    close (SERIALHANDLE);              # close file handle
-
-    # compare serial arrays
-    my $comparedList = List::Compare->new('--unsorted', \@help_serials, \@file_serials);
-    if ( $comparedList->is_LequivalentR ) {
-      $return_string = "HA (" . $cluster_types{$cluster_type} . ") is active";
-      $return_state = "OK";
-    } else {
-      $return_string = "Unknown node in active HA (" . $cluster_types{$cluster_type} . ") found, maybe a --reset is nessessary?";
-      $return_state = "WARNING";
-    } # end compare serial list
-  } # end scalar count
-
-  if ( $return_state eq "OK" ) {
-    my %cluster_sync_state = %{get_snmp_table($session, $oid_cluster_sync_state)};
-    while (($oid, $value) = each (%cluster_sync_state)) {
-      if ( $value == 0 ) {
-         $sync_string = "Sync-State: " . $cluster_sync_states{$value};
-         $return_state = "CRITICAL";
-         last;
+  if ( $cluster_type != 1 ) {
+    # first time, write cluster members to helper file
+    if ( ! -e $filename || $reset_file ) {
+      # open file handle to write (create/truncate)
+      open (SERIALHANDLE,"+>$filename") || die "Error while creating $filename";
+      # write serials to file
+      while (($oid, $value) = each (%snmp_serials)) {
+        print (SERIALHANDLE $value . "\n");
       }
     }
-  }
-  # if preferred master serial is not master
-  if ( $pri_serial && ( $pri_serial ne $curr_serial ) ) {
-    $return_string = $return_string . ", preferred master " . $pri_serial . " is not master!";
-    $return_state = "CRITICAL";
-  }
+  
+    # snmp serials
+    while (($oid, $value) = each (%snmp_serials)) {
+      chomp; # remove "\n" if exists
+      push @help_serials, $value;
+    }
+  
+    # if less then 2 nodes found: critical
+    if ( scalar(@help_serials) < 2  && $cluster_type != 1 ) {
+      $return_string = "HA (" . $cluster_types{$cluster_type} . ") inactive, single node found: " . $curr_serial;
+      $return_state = "CRITICAL";
+    # else check if there are differences in ha nodes
+    } else {
+      # open existing serials
+      open ( SERIALHANDLE, "$filename") || die "Error while opening file $filename";
+      my @file_serials = <SERIALHANDLE>; # push lines into file_serials
+      chomp(@file_serials);              # remove "\n" if exists in array elements
+      close (SERIALHANDLE);              # close file handle
+  
+      # compare serial arrays
+      my $comparedList = List::Compare->new('--unsorted', \@help_serials, \@file_serials);
+      if ( $comparedList->is_LequivalentR ) {
+        $return_string = "HA (" . $cluster_types{$cluster_type} . ") is active";
+        $return_state = "OK";
+      } else {
+        $return_string = "Unknown node in active HA (" . $cluster_types{$cluster_type} . ") found, maybe a --reset is nessessary?";
+        $return_state = "WARNING";
+      } # end compare serial list
+    } # end scalar count
+  
+    if ( $return_state eq "OK"  && $firmware_version !~ /.*v4\.0\..*/) {
+      my %cluster_sync_state = %{get_snmp_table($session, $oid_cluster_sync_state)};
+        while (($oid, $value) = each (%cluster_sync_state)) {
+          if ( $value == 0 ) {
+             $sync_string = "Sync-State: " . $cluster_sync_states{$value};
+             $return_state = "CRITICAL";
+             last;
+          }
+        }
+    }
+    # if preferred master serial is not master
+    if ( $pri_serial && ( $pri_serial ne $curr_serial ) ) {
+      $return_string = $return_string . ", preferred master " . $pri_serial . " is not master!";
+      $return_state = "CRITICAL";
+    }
+  
+    # Write an output string...
+    $return_string = $return_state . ": " . $curr_device . "@" . $firmware_version . " (Master: " . $curr_serial . ", Slave: " . $help_serials[$#help_serials] . "): " . $return_string;
+    $return_string .= $firmware_version !~ /.*v4\.0\..*/  ? ", " . $sync_string : ''; 
+  } else {
+    $return_state = "OK";
+    $return_string = $return_state . ": " . $curr_device . "@" . $firmware_version . " HA: " . $cluster_types{$cluster_type};
+  } # end if cluster is standalone
 
-  # Write an output string...
-  $return_string = $return_state . ": " . $curr_device . " (Master: " . $curr_serial . ", Slave: " . $help_serials[$#help_serials] . "): " . $return_string . ", " . $sync_string;
   return ($return_state, $return_string);
 } # end cluster state
 
@@ -632,7 +664,7 @@ sub parse_args {
   my $slave         = undef;
   my $vpnmode       = "both";
   my $mode          = 2;
-  my $path          = "/usr/lib/nagios/plugins/FortiSerial";
+  my $path          = "/usr/lib64/nagios/plugins/FortiSerial";
   my $help          = 0;
 
   pod2usage(-message => "UNKNOWN: No Arguments given", -exitval => 3,  -sections => 'SYNOPSIS' ) if ( !@ARGV );
@@ -662,8 +694,10 @@ sub parse_args {
   pod2usage(-exitval => 3, -verbose => 3) if $help;
 
   # removing any non digits
-  $warn =~ s/\D*(\d+)\D*/$1/g;
-  $crit =~ s/\D*(\d+)\D*/$1/g;
+  if ( $type ne "firmware" ) {
+    $warn =~ s/\D*(\d+)\D*/$1/g;
+    $crit =~ s/\D*(\d+)\D*/$1/g;
+  }
 
   return (
     $ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
