@@ -115,6 +115,7 @@ if ( $version == 3 ) {
                             $ip,
                             $community,
                             $port,
+                            $version
                        ); # Open SNMP connection...
 }
 
@@ -209,14 +210,15 @@ sub get_snmp_session {
   my $ip = $_[0];
   my $community = $_[1];
   my $port = $_[2];
+  my $version = $_[3];
   my ($session, $error) = Net::SNMP->session(
                               -hostname  => $ip,
                               -community => $community,
                               -port      => $port,
                               -timeout   => 10,
-                              -retries   => 3,
+                              -retries   => 2,
                               -debug     => $net_snmp_debug_level,
-                              -version   => 2,
+                              -version   => $version,
                               -translate => [-timeticks => 0x0] # disable timetick translation
                           );
 
@@ -236,7 +238,7 @@ sub get_snmp_session_v3 {
                               -hostname     => $ip,
                               -port         => $port,
                               -timeout      => 10,
-                              -retries      => 3,
+                              -retries      => 2,
                               -debug        => $net_snmp_debug_level,
                               -version      => 3,
                               -username     => $user_name,
@@ -297,7 +299,7 @@ sub get_health_value {
   }
 
   $perf = "|'" . lc($label) . "'=" . $value . $UOM . ";" . $warn . ";" . $crit;
-  $return_string = $return_state . ": " . $curr_device . " (Master: " . $curr_serial .") " . $return_string . $perf;
+  $return_string = $return_state . ": " . $curr_device . " (Current device: " . $curr_serial .") " . $return_string . $perf;
 
   return ($return_state, $return_string);
 } # end health value
@@ -329,7 +331,7 @@ sub get_faz_health_value {
   }
 
   $perf = "|'" . lc($label) . "'=" . $value . $UOM . ";" . $warn . ";" . $crit;
-  $return_string = $return_state . ": " . $curr_device . " (Master: " . $curr_serial .") " . $return_string . $perf;
+  $return_string = $return_state . ": " . $curr_device . " (Current device: " . $curr_serial .") " . $return_string . $perf;
 
   return ($return_state, $return_string);
 } # end faz health value
@@ -664,7 +666,7 @@ sub parse_args {
   my $slave         = undef;
   my $vpnmode       = "both";
   my $mode          = 2;
-  my $path          = "/usr/lib64/nagios/plugins/FortiSerial";
+  my $path          = "/var/spool/nagios/ramdisk/FortiSerial";
   my $help          = 0;
 
   pod2usage(-message => "UNKNOWN: No Arguments given", -exitval => 3,  -sections => 'SYNOPSIS' ) if ( !@ARGV );
