@@ -3,13 +3,13 @@
 # icinga: -epn
 # This Plugin checks the cluster state of FortiGate
 #
-# Tested on: Fortigate 80C (5.0.7b)
-# Tested on: FortiGate 100D / FortiGate 300C (both 5.0.3)
+# Tested on: Fortigate 80C (5.0.7b, 5.2.x)
+# Tested on: FortiGate 100D / FortiGate 300C (5.0.3)
 # Tested on: FortiGate 200B (5.0.6), Fortigate 800C (5.2.2)
 # Tested on: FortiAnalyzer (5.2.4)
 #
 # Author: Oliver Skibbe (oliskibbe (at) gmail.com)
-# Date: 2016-02-25
+# Date: 2016-06-02
 #
 # Changelog:
 # Release 1.0 (2013)
@@ -54,6 +54,15 @@
 # - added retrieval of firmware version to disable sync check on older firmware
 #   versions
 # - fixed cluster check for standalone machines 
+# Release 1.7.0 (2016-06-02) Oliver Skibbe (oliskibbe (at) gmail.com) / Alexandre Rigaud (arigaud.prosodie.cap (at) free.fr)
+# - added checks for FortiMail (cpu, mem, log disk,mail disk, load, ses)
+# - autodetect device with s/n (http://kb.fortinet.com/kb/viewContent.do?externalId=FD31964)
+# - added check for firmware version to disabled sync status (fw<v5 dont works)
+# - fixed FQDN device name (#15@Napsty)
+# - fixed nosuchobject value
+# - fixed snmp version, now version 1 is also supported
+# - fixed hardware check, return unk if no sensors available
+# - added firmware check with -w/-c support
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -79,7 +88,7 @@ use Socket;
 use POSIX;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.6.0";
+my $script_version = "1.7.0";
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
@@ -125,7 +134,7 @@ if ( $error ne "" ) {
 }
 
 ## OIDs ##
-my $oid_unitdesc         = ".1.3.6.1.2.1.1.1.0";                   # Location of Fortinet device description... (String)
+my $oid_unitdesc         = ".1.3.6.1.2.1.1.5.0";                   # Location of Fortinet device description... (String)
 my $oid_serial           = ".1.3.6.1.4.1.12356.100.1.1.1.0";       # Location of Fortinet serial number (String)
 my $oid_firmware         = ".1.3.6.1.4.1.12356.101.4.1.1.0";       # Location of Fortinet firmware
 my $oid_cpu              = ".1.3.6.1.4.1.12356.101.13.2.1.1.3";    # Location of cluster member CPU (%)
@@ -139,6 +148,14 @@ my $oid_faz_mem_used     = ".1.3.6.1.4.1.12356.103.2.1.2.0";       # Location of
 my $oid_faz_mem_avail    = ".1.3.6.1.4.1.12356.103.2.1.3.0";       # Location of Memory available for FortiAnalyzer (kb)
 my $oid_faz_disk_used    = ".1.3.6.1.4.1.12356.103.2.1.4.0";       # Location of Disk used for FortiAnalyzer (Mb)
 my $oid_faz_disk_avail   = ".1.3.6.1.4.1.12356.103.2.1.5.0";       # Location of Disk available for FortiAnalyzer (Mb)
+
+## FortiMail OIDs ##
+my $oid_fe_cpu           = ".1.3.6.1.4.1.12356.105.1.6.0";         # Location of CPU for FortiMail (%)
+my $oid_fe_mem           = ".1.3.6.1.4.1.12356.105.1.7.0";         # Location of Memory used for FortiMail (%)
+my $oid_fe_ldisk         = ".1.3.6.1.4.1.12356.105.1.8.0";         # Location of Log Disk used for FortiMail (%)
+my $oid_fe_mdisk         = ".1.3.6.1.4.1.12356.105.1.9.0";         # Location of Mail Disk used for FortiMail (%)
+my $oid_fe_load          = ".1.3.6.1.4.1.12356.105.1.30.0";        # Location of Load used for FortiMail (%)
+my $oid_fe_ses           = ".1.3.6.1.4.1.12356.105.1.10.0";        # Location of cluster member Sessions for FortiMail (int)
 
 # Cluster
 my $oid_cluster_type     = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of Fortinet cluster type (String)
@@ -163,6 +180,7 @@ my $oid_apidtableroot     = ".1.3.6.1.4.1.12356.101.14.4.4.1.1" ;  # Represents 
 
 # HARDWARE SENSORS
 # "A list of device specific hardware sensors and values. Because different devices have different hardware sensor capabilities, this table may or may not contain any values."
+my $oid_hwsensor_cnt     = ".1.3.6.1.4.1.12356.101.4.3.1.0";       # Hardware Sensor count
 my $oid_hwsensorid       = ".1.3.6.1.4.1.12356.101.4.3.2.1.1";     # Hardware Sensor index
 my $oid_hwsensorname     = ".1.3.6.1.4.1.12356.101.4.3.2.1.2";     # Hardware Sensor Name
 my $oid_hwsensorvalue    = ".1.3.6.1.4.1.12356.101.4.3.2.1.3";     # Hardware Sensor Value
@@ -181,19 +199,41 @@ my $curr_device = get_snmp_value($session, $oid_unitdesc);
 # Check SNMP connection and get the serial of the device...
 my $curr_serial = get_snmp_value($session, $oid_serial);
 
-switch ( lc($type) ) {
-  case "cpu" { ($return_state, $return_string) = get_health_value($oid_cpu, "CPU", "%"); }
-  case "mem" { ($return_state, $return_string) = get_health_value($oid_mem, "Memory", "%"); }
-  case "net" { ($return_state, $return_string) = get_health_value($oid_net, "Network", ""); }
-  case "ses" { ($return_state, $return_string) = get_health_value($oid_ses, "Session", ""); }
-  case "vpn" { ($return_state, $return_string) = get_vpn_state(); }
-  case "wtp" { ($return_state, $return_string) = get_wtp_state("%"); }
-  case "hw"  { ($return_state, $return_string) = get_hw_state("%"); }
-  case "firmware" { ($return_state, $return_string) = get_firmware_state(); }
-  case "fazcpu" { ($return_state, $return_string) = get_health_value($oid_faz_cpu_used, "CPU", "%"); }
-  case "fazmem" { ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%"); }
-  case "fazdisk" { ($return_state, $return_string) = get_faz_health_value($oid_faz_disk_used, $oid_faz_disk_avail, "Disk", "%"); }
-  else { ($return_state, $return_string) = get_cluster_state(); }
+# Use s/n to determinate device
+switch ( $curr_serial ) {
+   case /^FL/ { # FL = FORTIANALYZER
+      switch ( lc($type) ) {
+         case "cpu" { ($return_state, $return_string) = get_health_value($oid_faz_cpu_used, "CPU", "%"); }
+         case "mem" { ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%"); }
+         case "disk" { ($return_state, $return_string) = get_faz_health_value($oid_faz_disk_used, $oid_faz_disk_avail, "Disk", "%"); }
+         case "firmware" { ($return_state, $return_string) = ('UNKNOWN', "UNKNOWN: FortiAnalyzer does not support firmware oid"); }
+         else { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: No selected type -T, $curr_device is a FORTIANALYZER (S/N: $curr_serial)"); }
+      }
+   }
+   case /^FE/ { # FE = FORTIMAIL
+      switch ( lc($type) ) {
+         case "cpu" { ($return_state, $return_string) = get_health_value($oid_fe_cpu, "CPU", "%"); }
+         case "mem" { ($return_state, $return_string) = get_health_value($oid_fe_mem, "Memory", "%"); }
+         case "disk" { ($return_state, $return_string) = get_health_value($oid_fe_mdisk, "Disk", "%"); }
+         case "ldisk" { ($return_state, $return_string) = get_health_value($oid_fe_ldisk, "Log Disk", "%"); }
+         case "load" { ($return_state, $return_string) = get_health_value($oid_fe_load, "Load", "%"); }
+         case "ses" { ($return_state, $return_string) = get_health_value($oid_fe_ses, "Session", ""); }
+         else { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: No selected type -T, $curr_device is a FORTIMAIL (S/N: $curr_serial)"); }
+      }
+   } 
+   else { # OTHERS (FG = FORTIGATE...)
+      switch ( lc($type) ) {
+         case "cpu" { ($return_state, $return_string) = get_health_value($oid_cpu, "CPU", "%"); }
+         case "mem" { ($return_state, $return_string) = get_health_value($oid_mem, "Memory", "%"); }
+         case "net" { ($return_state, $return_string) = get_health_value($oid_net, "Network", ""); }
+         case "ses" { ($return_state, $return_string) = get_health_value($oid_ses, "Session", ""); }
+         case "vpn" { ($return_state, $return_string) = get_vpn_state(); }
+         case "wtp" { ($return_state, $return_string) = get_wtp_state("%"); }
+         case "hw"  { ($return_state, $return_string) = get_hw_state("%"); }
+         case "firmware" { ($return_state, $return_string) = get_firmware_state(); }
+         else { ($return_state, $return_string) = get_cluster_state(); }
+      }
+   }
 }
 
 # Close the connection
@@ -276,10 +316,10 @@ sub get_health_value {
   if ( $slave == 1 ) {
       $oid = $_[0] . ".2";
       $label = "slave_" . $label;
-  } elsif ( $type =~ /^faz.*/ ) {
-      $oid = $_[0];
-  } else {
+  } elsif ( $curr_serial =~ /^FG/ ) {
       $oid = $_[0] . ".1";
+  } else {
+      $oid = $_[0];
   }
 
   $value = get_snmp_value($session, $oid);
@@ -561,35 +601,42 @@ sub get_wtp_state {
 
 sub get_hw_state{
    my $k;
-   my %hw_name_table = %{get_snmp_table($session, $oid_hwsensorname)};
-
-
-   my %hwsensoralarmstatus= (
-      0 => 'False',
-      1 => 'True'
-   );
-
-   $return_state = "OK";
-   $return_string = "All components are in appropriate state";
-   foreach $k (keys(%hw_name_table)) {
-         my $unit;
-         my $hw_name = $hw_name_table{$k};
-         my $sensoralr;
-         if ($hw_name  =~ /Fan\s/) { $unit = "RPM"; }
-         elsif ($hw_name  =~ /^DTS\sCPU[0-9]?|Temp|LM75|^ADT74(90|62)\s.+/) { $unit = "C"; }
-         elsif ($hw_name  =~ /^VCCP|^P[13]V[138]_.+|^AD[_\+].+|^\+(12|5|3\.3|1\.5|1\.25|1\.1)V|^PS[0-9]\s(VIN|VOUT|12V\sOutput)|^AD[_\+].+|^INA219\sPS[0-9]\sV(sht|bus)/) { $unit = "V"; }
-         else { $unit = "?"; }
-         my @num = split(/\./, $k);
-         my $sensorid = $num[$#num];
-         my $oid_alarm = $oid_hwsensoralarm . ".$sensorid";
-         my $oid_value = $oid_hwsensorvalue . ".$sensorid";
-         $sensoralr = get_snmp_value($session, $oid_alarm);
-      if ($sensoralr == 1){
-            my $sensorval = get_snmp_value($session, $oid_value);
-            $return_string = "$hw_name alarm is $hwsensoralarmstatus{$sensoralr} ($sensorval $unit)";
-          $return_state = "CRITICAL";
+   my $sensor_cnt = get_snmp_value($session, $oid_hwsensor_cnt);
+   if ( $sensor_cnt > 0 ) {
+      my %hw_name_table = %{get_snmp_table($session, $oid_hwsensorname)};
+   
+   
+      my %hwsensoralarmstatus= (
+         0 => 'False',
+         1 => 'True'
+      );
+   
+      $return_state = "OK";
+      $return_string = "All components are in appropriate state";
+      foreach $k (keys(%hw_name_table)) {
+            my $unit;
+            my $hw_name = $hw_name_table{$k};
+            my $sensoralr;
+            if ($hw_name  =~ /Fan\s/) { $unit = "RPM"; }
+            elsif ($hw_name  =~ /^DTS\sCPU[0-9]?|Temp|LM75|^ADT74(90|62)\s.+/) { $unit = "C"; }
+            elsif ($hw_name  =~ /^VCCP|^P[13]V[138]_.+|^AD[_\+].+|^\+(12|5|3\.3|1\.5|1\.25|1\.1)V|^PS[0-9]\s(VIN|VOUT|12V\sOutput)|^AD[_\+].+|^INA219\sPS[0-9]\sV(sht|bus)/) { $unit = "V"; }
+            else { $unit = "?"; }
+            my @num = split(/\./, $k);
+            my $sensorid = $num[$#num];
+            my $oid_alarm = $oid_hwsensoralarm . ".$sensorid";
+            my $oid_value = $oid_hwsensorvalue . ".$sensorid";
+            $sensoralr = get_snmp_value($session, $oid_alarm);
+         if ($sensoralr == 1){
+               my $sensorval = get_snmp_value($session, $oid_value);
+               $return_string = "$hw_name alarm is $hwsensoralarmstatus{$sensoralr} ($sensorval $unit)";
+             $return_state = "CRITICAL";
+         }
       }
+   } else {
+      $return_string = "UNKNOWN: device has no sensors available";
+      $return_state = "UNKNOWN";
    }
+
    return ($return_state, $return_string);
 } # end hw state
 
@@ -605,7 +652,7 @@ sub get_snmp_value{
 
   my (%result) = %{get_snmp_request($session, $oid) || die ("SNMP service is not available on ".$ip) };
 
-  if ( ! %result ||  $result{$oid} =~ /noSuchInstance/ ) {
+  if ( ! %result ||  $result{$oid} =~ /noSuch(Instance|Object)/ ) {
     $return_state = "UNKNOWN";
 
     print $return_state . ": OID $oid does not exist\n";
