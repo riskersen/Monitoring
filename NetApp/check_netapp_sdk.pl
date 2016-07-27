@@ -856,11 +856,11 @@ sub check_license {
 
   # if no additional name is given, lookup all licenses
   if( $name eq "" ) {
-    $output = $s->invoke( "license-list-info");
+    $output = $s->invoke( "license-v2-list-info");
   }
 
   if ($output->results_status() eq "failed"){
-    $np->nagios_exit(CRITICAL, "license-list-info failed: " . $output->results_reason());
+    $np->nagios_exit(CRITICAL, "license-v2-list-info failed: " . $output->results_reason());
   }
 
   my $licenses = $output->child_get("licenses");
@@ -868,6 +868,7 @@ sub check_license {
   my @result = $licenses->children_get();
 
   foreach my $license (@result) {
+    no warnings 'uninitialized';
     $max_counter++;
     my $license_name = $license->child_get_string("service");
     my $license_expired = $license->child_get_string("is-expired");
