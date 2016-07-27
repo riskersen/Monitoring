@@ -10,10 +10,10 @@
  *
  *
  * @author: jk@ciphron.de
- * @updated by: os@ciphron.de
+ * @updated by: oliskibbe@gmail.com
  * @bugfixes / improvements by: Sebastian Puschhof (MIDAN Software GmbH), Juan Jesús Cervera (Teruel)
  *
- * Last update: 2014-07-23
+ * Last update: 2016-07-27
  */
 
 // ignore notices
@@ -82,7 +82,7 @@ function get_status ( $max, $cur, $warn, $crit ) {
 		}
 	} else {
 		if ( $cur == -3 ) {
-			return 0;
+			return 2;
 	        //Ricoh printers use -100 value to indicate 20%-1% or 10%-1% remaining toner
         	} else if ( $cur == -2 || $cur == -100 ) {
             		return 1;
@@ -142,9 +142,9 @@ function snmp_walk($oid) {
 	global $ip, $community, $snmpversion;
 	if ( $snmpversion == 3 ) {
 		// snmp3_walk ( string $host , string $sec_name , string $sec_level , string $auth_protocol , string $auth_passphrase , string $priv_protocol , string $priv_passphrase , string $object_id )
-		$value = @snmp3_walk($ip, $sec_name ,$sec_level ,$auth_protocol ,$auth_passphrase ,$priv_protocol ,$priv_passphrase, $oid);
+		$value = @snmp3_real_walk($ip, $sec_name ,$sec_level ,$auth_protocol ,$auth_passphrase ,$priv_protocol ,$priv_passphrase, $oid);
 	} else if ( $snmpversion == 'v2c' ) {
-		$value = @snmp2_walk($ip, $community, $oid);
+		$value = @snmp2_real_walk($ip, $community, $oid);
 	} else {
 		$value = @snmpwalkoid($ip, $community, $oid);
 	}
@@ -491,11 +491,7 @@ switch ( $command ) {
 
 		$rawdata = snmp_walk ( '.1.3.6.1.2.1.43.18.1.1' );
 		if ( $rawdata === FALSE || !is_array ( $rawdata ) ) {
-			if ( strpos($sysDescr, "HP ETHERNET") !== FALSE ) {
-				nagios_return ( 0, "no alerts" );
-			} else {
-				nagios_return ( 3, "Could not get data" );
-			}
+			nagios_return ( 0, "OID not available, assuming no alerts" );
 		} 
 
 		$display = '';
@@ -512,8 +508,8 @@ switch ( $command ) {
 		$mydata = array();
 		foreach ( $rawdata as $key => $val ) {
 				
-            //if ( !(preg_match ( "@SNMPv2-SMI::mib-2.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match ) || preg_match ( "@iso.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match )))
-            		if ( !(	preg_match ( "@1.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match ) || preg_match ( "@iso.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match )))
+            	if ( !(preg_match ( "@SNMPv2-SMI::mib-2.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match ) || preg_match ( "@iso.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match )))
+            	//	if ( !(	preg_match ( "@1.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match ) || preg_match ( "@iso.3.6.1.2.1.43.18.1.1.(?P<num>\d+).1.(?P<index>\d+)@", $key, $match )))
 				nagios_return ( 3, "Internal error" );
 
 			$mydata[(int)$match['index']][(int)$match['num']] = $val;
