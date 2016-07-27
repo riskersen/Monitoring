@@ -17,6 +17,8 @@
 #      - Performance data
 #
 # Changelog:
+#      2016-07-27: Oliver Skibbe
+#        - fixed: license info
 #      2014-10-29: Oliver Skibbe (https://github.com/riskersen):
 #        - fixed: failed snapmirror were filtered
 #      2014-10-08: Oliver Skibbe (https://github.com/riskersen):
