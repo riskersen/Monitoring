@@ -63,6 +63,9 @@
 # - fixed snmp version, now version 1 is also supported
 # - fixed hardware check, return unk if no sensors available
 # - added firmware check with -w/-c support
+# Release 1.7.1b (2016-28-7) Alan Valenzuela (noos.shadow (at) gmail.com) 
+#----Beta modification---
+# - add -I modificator to specify an ipsec vpn to monitor returning OK or Critical and "1" or "0" as perfdata, to use the modificator you must insert the index number of the desired vpn (1....-500)
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -92,7 +95,7 @@ my $script_version = "1.7.0";
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
-    $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path) = parse_args();
+    $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path, $vpnindex) = parse_args();
 
 # Initialize variables....
 my $net_snmp_debug_level = 0x00; # See http://search.cpan.org/~dtown/Net-SNMP-v6.0.1/lib/Net/SNMP.pm#debug()_-_set_or_get_the_debug_mode_for_the_module
@@ -475,7 +478,6 @@ sub get_vpn_state {
   my $ActiveSSL = 0;
   my $ActiveSSLTunnel = 0;
   my $return_string_errors = "";
-
   # Enumeration for the tunnel up/down states
   my %entitystate = ( 
                       '1' => 'down',
@@ -484,12 +486,12 @@ sub get_vpn_state {
   $return_state = "OK";
 
   # Unless specifically requesting IPSec checks only, do an SSL connection check
-  if ($vpnmode ne "ipsec"){
+  if ($vpnmode eq "ipsec"){
     $ActiveSSL = get_snmp_value($session, $oid_ActiveSSL);
     $ActiveSSLTunnel = get_snmp_value($session, $oid_ActiveSSLTunnel);
   }
   # Unless specifically requesting SSL checks only, do an IPSec tunnel check
-  if ($vpnmode ne "ssl") {
+  if ($vpnmode eq "ssl") {
   # N/A as of 2015    
 #    # Get just the top level tunnel data
     my %tunnels = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunndx)};
@@ -511,27 +513,42 @@ sub get_vpn_state {
       } # end tunnel count
     }
   }
+  if ($vpnmode eq "ns") {
+	my %tunnels = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunndx)};
+	  if ( $entitystate{get_snmp_value($session, $oid_ipsectuntableroot . $oidf_tunstatus . "." . $vpnindex)} eq "up" ) {
+	  	$return_state = "OK";
+		$perf="|1" ;
+		$return_string= $return_state . $perf;
+		} else {
+			$return_state = "CRITICAL";
+			$perf="|0" ;
+			$return_string= $return_state . $perf;
+			}
+  }
   #Set Unitstate
-  if (($mode >= 2 ) && ($vpnmode ne "ssl")) {
+  if (($mode >= 2 ) && ($vpnmode eq "ssl")) {
     if ($ipstunsdown == 1) { $return_state = "WARNING"; }
     if ($ipstunsdown >= 2) { $return_state = "CRITICAL"; }
   }
 
-  # Write an output string...
-  $return_string = $return_state . ": " . $curr_device . " (Master: " . $curr_serial .")";
 
-  if ($vpnmode ne "ipsec") {
+  if ($vpnmode eq "ipsec") {
     #Add the SSL tunnel count
     $return_string = $return_string . ": Active SSL-VPN Connections/Tunnels: " . $ActiveSSL."/".$ActiveSSLTunnel."";
   }
-  if ($vpnmode ne "ssl") {
+  if ($vpnmode eq "ssl") {
     #Add the IPSec tunnel count and any errors....
     $return_string = $return_string . ": IPSEC Tunnels: Configured/Active: " . $ipstuncount . "/" . $ipstunsopen. " " . $return_string_errors;
   }
   # Create performance data
+  if ($vpnmode ne "ns") {
+
+  # Write an output string...
+  $return_string = $return_state . ": " . $curr_device . " (Master: " . $curr_serial .")";
+
   $perf="|'ActiveSSL-VPN'=".$ActiveSSL." 'ActiveIPSEC'=".$ipstunsopen;
   $return_string .= $perf;
-
+  
   # Check to see if the output string contains either "unkw", "WARNING" or "down", and set an output state accordingly...
   if($return_string =~/uknw/){
     $return_state = "UNKNOWN";
@@ -542,8 +559,10 @@ sub get_vpn_state {
   if($return_string =~/down/){
     $return_state = "CRITICAL";
   }
-  return ($return_state, $return_string);
-} # end vpn state
+}
+return ($return_state, $return_string);
+}
+ # end vpn state
 
 sub get_wtp_state {
   # Connection state of a WTP to AC : offLine(1), onLine(2), downloadingImage(3), connectedImage(4), other(0)
@@ -715,6 +734,7 @@ sub parse_args {
   my $mode          = 2;
   my $path          = "/var/spool/nagios/ramdisk/FortiSerial";
   my $help          = 0;
+  my $vpnindex		= 1;
 
   pod2usage(-message => "UNKNOWN: No Arguments given", -exitval => 3,  -sections => 'SYNOPSIS' ) if ( !@ARGV );
 
@@ -738,6 +758,7 @@ sub parse_args {
           'reset|R:1'        => \$reset_file,
           'path|p:s'         => \$path,
           'help|h!'          => \$help,
+		  'vpnindex|I=i'    => \$vpnindex,
   ) or pod2usage(-exitval => 3, -sections => 'OPTIONS' );
 
   pod2usage(-exitval => 3, -verbose => 3) if $help;
@@ -750,7 +771,7 @@ sub parse_args {
 
   return (
     $ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
-    $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path
+    $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path, $vpnindex
   );
 }
 
