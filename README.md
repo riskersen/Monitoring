@@ -16,6 +16,7 @@ Monitoring plugins and helper for Nagios/icinga/xxx
 - check_sge.vbs - Check Safeguard Enterprise state via nsclient
 - check_sgn_licence.php - Check Safeguard Enterprise licence state
 - check_dns.ps1 - DNS Check for Windows Hosts, to be called via nsclient
+- check_proxy_kerb.ps1 - Proxy check with Kerberos authentication, to be called via nsclient (Requiring PowerShell 3.0+)
 
 ## Helper
 - Nagios Email Repoter - Scheduled reporting mails
