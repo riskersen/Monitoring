@@ -4,6 +4,10 @@
 # Purpose: return warning or critical if file count of specified path is higher then limits
 # Also checks if a path is a mounted path
 # Changelog:
+#		2016-08-31 - arigaud.prosodie.cap (at) free.fr
+#		- added file age check
+#		- check if mountpoint command exists before execute
+#		- added set -au option
 #		2015-11-26
 #		- fixed check for count if alert should be for 1 file
 #		- prettified output of timestamps, more human readable
@@ -15,6 +19,7 @@
 #		- now supports include/exclude
 #		- updated usage
 #		- multiline output for found files (limited to 150)
+set -au
 
 PROGNAME=$(basename $0)
 PROGPATH=$(echo $0 | sed -e 's,[\\/][^\\/][^\\/]*$,,')
@@ -30,6 +35,7 @@ Usage: $PROGNAME -p path -w warning -c critical -d max-depth -f filelist [-e|-m 
 -f\tpipe separated list of files includes or excludes
 -e\texclude/include list of files flag
 -d\tmax-depth, how deep to dive into folders
+-a\tmax-age, max file age
 	"
 	exit 3
 }
@@ -60,7 +66,13 @@ function convertTime () {
 	oldestFileTime="{$day}d {$hour}h {$min}m {$sec}s"
 }
 
-while getopts ":m:p:w:c:d:f:e:" opt; do
+# set variables to avoid unbound message
+mountedpath=""
+warning=""
+critical=""
+maxfileage=0
+
+while getopts ":m:p:w:c:d:f:e:a:" opt; do
 	case $opt in
 	p)
 		path=$OPTARG
@@ -83,6 +95,9 @@ while getopts ":m:p:w:c:d:f:e:" opt; do
 	f)
 		filelist=$OPTARG
 		;;
+	f)
+		maxfileage=$OPTARG
+		;;
 	\?)
 		echo "Option -$OPTARG is invalid!"
 		usage
@@ -99,13 +114,24 @@ if [ ! -d "$path" ] ; then
 fi
 
 if [ $mountedpath ] ; then
-	# filter mount point
-	basepath=$(df "$path" | tail -1 | awk '{ print $6 }')
-	mountpoint -q "$basepath"
-	if [ $? -gt 0 ] ; then
-		echo "Path $basepath is not mounted correctly"
+	mountpoint=`which mountpoint 2>&1`
+	if [ $? -eq 0 ] ; then
+		# filter mount point
+		basepath=$(df "$path" | tail -1 | awk '{ print $6 }')
+		$mountpoint -q "$basepath"
+		if [ $? -gt 0 ] ; then
+			echo "Path $basepath is not mounted correctly"
+			usage
+		fi
+	else
+		echo "$mountpoint"
 		usage
 	fi
+fi
+
+if [ -z "$warning" -o -z "$critical" ] ; then
+        echo "Warning or Critical value is empty"
+        usage
 fi
 
 if [ $warning -gt $critical ] ; then
@@ -114,7 +140,7 @@ if [ $warning -gt $critical ] ; then
 fi
 
 # find all files
-oldestFiles=$(find "$path" -maxdepth $maxdepth -type f -printf '%TY-%Tm-%Td %TH:%TM;%p\n' | grep -E -i $grepOpt "$filelist" | sort -k 1n)
+oldestFiles=$(find "$path" -maxdepth $maxdepth -type f -mmin +$maxfileage -printf '%TY-%Tm-%Td %TH:%TM;%p\n' | grep -E -i $grepOpt "$filelist" | sort -k 1n)
 
 # get file count
 filecount=$(echo "$oldestFiles" | grep -v '^$' | wc -l)
