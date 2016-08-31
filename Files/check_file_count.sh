@@ -95,7 +95,7 @@ while getopts ":m:p:w:c:d:f:e:a:" opt; do
 	f)
 		filelist=$OPTARG
 		;;
-	f)
+	a)
 		maxfileage=$OPTARG
 		;;
 	\?)
