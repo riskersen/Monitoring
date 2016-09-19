@@ -492,7 +492,7 @@ sub get_vpn_state {
   if ($vpnmode ne "ssl") {
   # N/A as of 2015    
 #    # Get just the top level tunnel data
-    my %tunnels = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunndx)};
+    my %tunnels = %{get_snmp_table_nodie($session, $oid_ipsectuntableroot . $oidf_tunndx)};
 
     while (($oid, $value) = each (%tunnels)) {
       #Bump the total tunnel count
@@ -694,6 +694,19 @@ sub get_snmp_table{
   return $sess_get_table;
 } # end get snmp table
 
+sub get_snmp_table_nodie{
+  my $session = $_[0];
+  my $oid = $_[1];
+
+  my $sess_get_table = $session->get_table(
+                       -baseoid =>$oid
+  );
+
+  if ( ! defined($sess_get_table) ) {
+    return {};
+  }
+  return $sess_get_table;
+} # end get snmp table
 
 sub parse_args {
   my $ip            = "";       # snmp host
