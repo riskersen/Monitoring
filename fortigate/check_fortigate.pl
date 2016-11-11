@@ -63,6 +63,8 @@
 # - fixed snmp version, now version 1 is also supported
 # - fixed hardware check, return unk if no sensors available
 # - added firmware check with -w/-c support
+# Relase 1.7.2 (2016-11-11) Oliver Skibbe (oliskibbe (at) gmail.com)
+# - replaced switch/case by given/when to improve performance
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -79,16 +81,16 @@
 # 59 Temple Place - Suite 330, Boston, MA 02111-130
 
 use strict;
+use feature ":5.10";
 use Net::SNMP;
 use List::Compare;
-use Switch;
 use Getopt::Long qw(:config no_ignore_case bundling);
 use Pod::Usage;
 use Socket;
 use POSIX;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.7.0";
+my $script_version = "1.7.2";
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
@@ -200,38 +202,36 @@ my $curr_device = get_snmp_value($session, $oid_unitdesc);
 my $curr_serial = get_snmp_value($session, $oid_serial);
 
 # Use s/n to determinate device
-switch ( $curr_serial ) {
-   case /^FL/ { # FL = FORTIANALYZER
-      switch ( lc($type) ) {
-         case "cpu" { ($return_state, $return_string) = get_health_value($oid_faz_cpu_used, "CPU", "%"); }
-         case "mem" { ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%"); }
-         case "disk" { ($return_state, $return_string) = get_faz_health_value($oid_faz_disk_used, $oid_faz_disk_avail, "Disk", "%"); }
-         case "firmware" { ($return_state, $return_string) = ('UNKNOWN', "UNKNOWN: FortiAnalyzer does not support firmware oid"); }
-         else { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: No selected type -T, $curr_device is a FORTIANALYZER (S/N: $curr_serial)"); }
+given ( $curr_serial ) {
+   when ( /^FL/ ) { # FL = FORTIANALYZER
+      given ( lc($type) ) {
+         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_faz_cpu_used, "CPU", "%"); }
+         when ("mem") { ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%"); }
+         when ("disk") { ($return_state, $return_string) = get_faz_health_value($oid_faz_disk_used, $oid_faz_disk_avail, "Disk", "%"); }
+         when ("firmware") { ($return_state, $return_string) = ('UNKNOWN', "UNKNOWN: FortiAnalyzer does not support firmware oid"); }
+         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: No selected type -T, $curr_device is a FORTIANALYZER (S/N: $curr_serial)"); }
       }
-   }
-   case /^FE/ { # FE = FORTIMAIL
-      switch ( lc($type) ) {
-         case "cpu" { ($return_state, $return_string) = get_health_value($oid_fe_cpu, "CPU", "%"); }
-         case "mem" { ($return_state, $return_string) = get_health_value($oid_fe_mem, "Memory", "%"); }
-         case "disk" { ($return_state, $return_string) = get_health_value($oid_fe_mdisk, "Disk", "%"); }
-         case "ldisk" { ($return_state, $return_string) = get_health_value($oid_fe_ldisk, "Log Disk", "%"); }
-         case "load" { ($return_state, $return_string) = get_health_value($oid_fe_load, "Load", "%"); }
-         case "ses" { ($return_state, $return_string) = get_health_value($oid_fe_ses, "Session", ""); }
-         else { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: No selected type -T, $curr_device is a FORTIMAIL (S/N: $curr_serial)"); }
+   } when ( /^FE/ ) { # FE = FORTIMAIL
+      given ( lc($type) ) {
+         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_fe_cpu, "CPU", "%"); }
+         when ("mem") { ($return_state, $return_string) = get_health_value($oid_fe_mem, "Memory", "%"); }
+         when ("disk") { ($return_state, $return_string) = get_health_value($oid_fe_mdisk, "Disk", "%"); }
+         when ("ldisk") { ($return_state, $return_string) = get_health_value($oid_fe_ldisk, "Log Disk", "%"); }
+         when ("load") { ($return_state, $return_string) = get_health_value($oid_fe_load, "Load", "%"); }
+         when ("ses") { ($return_state, $return_string) = get_health_value($oid_fe_ses, "Session", ""); }
+         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: No selected type -T, $curr_device is a FORTIMAIL (S/N: $curr_serial)"); }
       }
-   } 
-   else { # OTHERS (FG = FORTIGATE...)
-      switch ( lc($type) ) {
-         case "cpu" { ($return_state, $return_string) = get_health_value($oid_cpu, "CPU", "%"); }
-         case "mem" { ($return_state, $return_string) = get_health_value($oid_mem, "Memory", "%"); }
-         case "net" { ($return_state, $return_string) = get_health_value($oid_net, "Network", ""); }
-         case "ses" { ($return_state, $return_string) = get_health_value($oid_ses, "Session", ""); }
-         case "vpn" { ($return_state, $return_string) = get_vpn_state(); }
-         case "wtp" { ($return_state, $return_string) = get_wtp_state("%"); }
-         case "hw"  { ($return_state, $return_string) = get_hw_state("%"); }
-         case "firmware" { ($return_state, $return_string) = get_firmware_state(); }
-         else { ($return_state, $return_string) = get_cluster_state(); }
+   } default { # OTHERS (FG = FORTIGATE...)
+      given ( lc($type) ) {
+         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_cpu, "CPU", "%"); }
+         when ("mem") { ($return_state, $return_string) = get_health_value($oid_mem, "Memory", "%"); }
+         when ("net") { ($return_state, $return_string) = get_health_value($oid_net, "Network", ""); }
+         when ("ses") { ($return_state, $return_string) = get_health_value($oid_ses, "Session", ""); }
+         when ("vpn") { ($return_state, $return_string) = get_vpn_state(); }
+         when ("wtp") { ($return_state, $return_string) = get_wtp_state("%"); }
+         when ("hw" ) { ($return_state, $return_string) = get_hw_state("%"); }
+         when ("firmware") { ($return_state, $return_string) = get_firmware_state(); }
+         default { ($return_state, $return_string) = get_cluster_state(); }
       }
    }
 }
