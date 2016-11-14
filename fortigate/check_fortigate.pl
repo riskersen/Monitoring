@@ -9,7 +9,7 @@
 # Tested on: FortiAnalyzer (5.2.4)
 #
 # Author: Oliver Skibbe (oliskibbe (at) gmail.com)
-# Date: 2016-06-02
+# Date: 2016-11-14
 #
 # Changelog:
 # Release 1.0 (2013)
@@ -63,8 +63,10 @@
 # - fixed snmp version, now version 1 is also supported
 # - fixed hardware check, return unk if no sensors available
 # - added firmware check with -w/-c support
-# Relase 1.7.2 (2016-11-11) Oliver Skibbe (oliskibbe (at) gmail.com)
+# Release 1.7.2 (2016-11-11) Oliver Skibbe (oliskibbe (at) gmail.com)
 # - replaced switch/case by given/when to improve performance
+# Release 1.7.3 (2016-11-14) Oliver Skibbe (oliskibbe (at) gmail.com)
+# - fixed FortiAnalyzer detection (serial beginning with FL or FAZ)
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -90,7 +92,7 @@ use Socket;
 use POSIX;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.7.2";
+my $script_version = "1.7.3";
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
@@ -203,7 +205,7 @@ my $curr_serial = get_snmp_value($session, $oid_serial);
 
 # Use s/n to determinate device
 given ( $curr_serial ) {
-   when ( /^FL/ ) { # FL = FORTIANALYZER
+   when ( /^(FL|FAZ)/ ) { # FL|FAZ = FORTIANALYZER
       given ( lc($type) ) {
          when ("cpu") { ($return_state, $return_string) = get_health_value($oid_faz_cpu_used, "CPU", "%"); }
          when ("mem") { ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%"); }
