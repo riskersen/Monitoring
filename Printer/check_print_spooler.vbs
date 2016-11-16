@@ -1,23 +1,35 @@
 ' MSDN: http://msdn.microsoft.com/en-us/library/aa394370%28v=vs.85%29.aspx
 ' Required Variables
 ' Author: Oliver Skibbe oliskibbe (at) gmail.com
-' Date: 2016-03-01
+' Date: 2016-11-16
+' Changelog:
+' - fixed return code in case of library file missing
+
 Const PROGNAME = "check_print_spooler"
-Const VERSION = "1.2.0"
+Const VERSION = "1.3.0"
 
 ' automatically kill job?
 killjob = false
 
 Set wshShell = CreateObject("WScript.Shell")
-strProfileDir = wshShell.ExpandEnvironmentStrings("%PROGRAMFILES%")
+Set fso = CreateObject("Scripting.FileSystemObject")
+
+'64bit NSClient/NSCP
+strProgramFilesDir = wshShell.ExpandEnvironmentStrings("%PROGRAMFILES%")
 
 ' Nagios helper functions
-Include strProfileDir & "\NSClient++\scripts\lib\NagiosPlugins.vbs"
+strNagiosLib = strProgramFilesDir & "\NSClient++\scripts\lib\NagiosPlugins.vbs"
+If Not fso.FileExists(strNagiosLib) Then
+    WScript.Echo("NSCP/NSClient VBS Library File (" + strNagiosLib + ") does not exist, please check/adjust path!")
+    Wscript.Quit(3)
+Else
+    Include strNagiosLib
+End If  
 
 ' Arguments
 strComputer = WScript.Arguments.Item(0)
 
-' Defaults
+' Default return, not so nice to assume OK..
 return_code = 0
 return_msg = "Everythings fine"
 
@@ -31,7 +43,6 @@ Set np = New NagiosPlugin
 Set Result = objWMIService.ExecQuery("Select * From Win32_PrintJob Where Status = 'Error'")
 
 For Each instance In Result
-
 	' automatic job kill
 	If killjob = True Then
 		instance.Delete_
@@ -53,8 +64,7 @@ np.nagios_exit return_msg, return_code
 
 
 Sub Include( cNameScript )
-    Set oFS = CreateObject("Scripting.FileSystemObject")		
-    Set oFile = oFS.OpenTextFile( cNameScript )
+    Set oFile = fso.OpenTextFile( cNameScript )
     ExecuteGlobal oFile.ReadAll()
     oFile.Close
 End Sub
