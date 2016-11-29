@@ -1,5 +1,6 @@
 #!/usr/bin/perl
 # nagios: -epn
+# icinga: -epn
 #    Copyright (C) 2004 Altinity Limited
 #    E: info@altinity.com    W: http://www.altinity.com/
 #    Modified by pierre.gremaud@bluewin.ch
@@ -20,6 +21,10 @@
 #    along with this program; if not, write to the Free Software
 #    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA    02111-1307    USA
 #
+# 2016-11-29: Oliver Skibbe oliskibbe (at) gmail.com
+#       - disabling icinga embedded perl interpreter
+#       - fixed external sensor option
+#       - improved option handling
 # 2015-11-20: Oliver Skibbe oliskibbe (at) gmail.com
 #	- disabling nagios embedded perl interpreter
 # 2015-10-08: Oliver Skibbe oliver.skibbe (at) mdkn.de
@@ -49,11 +54,10 @@
 #		After: CRIT - Smart-UPS RT 10000 XL - CRIT BATTERY CAPACITY 50% - STATUS NORMAL - OUTPUT LOAD 31% - TEMPERATURE 23 C
 #	- Added multiline output for firmware,manufacture date and serial number
 
+use feature ":5.10";
 use Net::SNMP;
 use Getopt::Std;
 use Getopt::Long qw(:config no_ignore_case bundling);
-use feature qw/switch/;
-no if $] >= 5.018, 'warnings', "experimental::smartmatch";
 
 # Do we have enough information?
 if (@ARGV < 1) {
@@ -68,9 +72,9 @@ my ($ip, $community, $version, $user_name, $auth_password, $auth_prot, $priv_pas
 my $net_snmp_debug_level = 0x00;	# See http://search.cpan.org/~dtown/Net-SNMP-v6.0.1/lib/Net/SNMP.pm#debug()_-_set_or_get_the_debug_mode_for_the_module
 
 $script    = "check_ups_apc.pl";
-$script_version = "1.4";
+$script_version = "1.4.1";
 
-$timeout = 3;			# SNMP query timeout
+$timeout = 10;			# SNMP query timeout
 $status = 0;
 $returnstring = "";
 $perfdata = "";
@@ -267,7 +271,7 @@ sub main {
     }
 
 	# external temperature sensor,
-    if ( $with_external_sensor ) {
+    if ( defined($with_external_sensor) ) {
 	if (!defined($s->get_request($oid_exttemperature))) {
         	if (!defined($s->get_request($oid_sysDescr))) {
 	            $returnstring = "SNMP agent not responding";
@@ -583,8 +587,8 @@ sub parse_args
 	my $priv_password = "";		# v3
 	my $priv_prot = "aes";		# v3 priv algo
 	
-	my $with_external_sensor = 0;	# external sensor
-	my $help = 0;
+	my $with_external_sensor = undef; # external sensor
+	my $help = undef;
 
 	pod2usage(-message => "UNKNOWN: No Arguments given", -exitval => 3, -verbose => 0) if ( !@ARGV );
 
@@ -592,14 +596,14 @@ sub parse_args
 		'host|H=s'		=> \$ip,
 		'version|v:s'		=> \$version,
 		'community|C:s' 	=> \$community,
-		'externalsensor|S:s' 	=> \$with_external_sensor,
+		'externalsensor|S!' 	=> \$with_external_sensor,
 		'username|U:s'  	=> \$user_name,
 		'authpassword|A:s' 	=> \$auth_password,
 		'authprotocol|a:s' 	=> \$auth_prot,
 		'privpassword|X:s' 	=> \$priv_password,
 		'privprotocol|x:s' 	=> \$priv_prot,
-		'help|?!'		=> \$help,
-	);
+		'help|h|?!'		=> \$help,
+	) or usage();
 
 	usage() if $help;
 
@@ -642,6 +646,4 @@ it under the terms of the GNU General Public License
 USAGE
      exit 1;
 }
-
-
 
