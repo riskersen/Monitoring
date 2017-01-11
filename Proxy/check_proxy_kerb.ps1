@@ -22,6 +22,10 @@
 #                - Output for GPO 'Prevent running First Run Wizard' needs to be enabled
 #                  this is needed when using a service account which never logs in and
 #                  uses IE
+# 1.0 2017-01-10
+#                - SSL/TLS configuration applied
+#                - added new option for displaying received content
+#                - added generic error message output
 #
 ##############################################################################
 
@@ -33,8 +37,9 @@ Param(
     [string]$target_url,
     [Int]$expected_code,
     [string]$expected_content,
-    [Int]$warn_response_time = 15,
-    [Int]$crit_response_time = 25
+    [Int]$warn_response_time = 20,
+    [Int]$crit_response_time = 30,
+    [Int]$display_content = 0
 )
 
 # nagios return stuff
@@ -42,6 +47,10 @@ $returnStates = @{0 = 'OK'; 1 = 'WARNING'; 2 = 'CRITICAL'; 3 = 'UNKNOWN' }
 # defaults
 $returnState = 3
 $returnString = ""
+
+# Allow all SSL/TLS protocols to be used
+$AllProtocols = [System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'
+[System.Net.ServicePointManager]::SecurityProtocol = $AllProtocols
 
 $timeTaken = Measure-Command -Expression {
     Try {
@@ -58,6 +67,10 @@ $timeTaken = Measure-Command -Expression {
             exit 3
         } ElseIf ( $errorMessage -Like "*The operation has timed out*" ) {
             Write-Host "UNKNOWN: Webrequest timed out"
+            exit 3
+        # plain web request exception if nothing matches in prior
+        } ElseIf ( $errorMessage -is [string] ) {
+            Write-Host "UNKNOWN: $errorMessage"
             exit 3
         } else {
             # get content of webpage
@@ -130,6 +143,10 @@ $timeTaken = Measure-Command -Expression {
             }
         } 
         $returnString = $returnStates[$returnState] + ": " + $returnString + "|" + $perf
+
+        If ( $display_content -eq 1 ) {
+            $returnString = $returnString + "`n" + "Fetched Content:" + $content
+        }
 
     Write-Host $returnString
     exit $returnState
