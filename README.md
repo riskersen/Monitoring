@@ -22,3 +22,4 @@ Monitoring plugins and helper for Nagios/icinga/xxx
 - Nagios Email Repoter - Scheduled reporting mails
 - MySQL Backup - mysql backup with nsca support for local and remote hosts
 - SQLite Backup - sqlite backup with nsca support for local and remote hosts
+- SSH Firewall - protect SSH remote command execution by only allowing specific path
