@@ -1,4 +1,4 @@
-##############################################################################
+#############################################################################################
 #
 # NAME: 	check_proxy_kerberos.ps1
 #
@@ -16,24 +16,23 @@
 # CHANGELOG:
 # 0.8 2016-07-26 - initial version
 # 0.9 2016-11-16
-# 			     - fixed web timeout
-# 			     - fixed output and return state in case of code matches but 
-#                  content not and vice versa
-#                - Output for GPO 'Prevent running First Run Wizard' needs to be enabled
-#                  this is needed when using a service account which never logs in and
-#                  uses IE
+# 		- fixed web timeout
+# 		- fixed output and return state in case of code matches but 
+#                 content not and vice versa
+#		- Output for GPO 'Prevent running First Run Wizard' needs to be enabled
+#                 this is needed when using a service account which never logs in and uses IE
 # 1.0 2017-01-10
 #                - SSL/TLS configuration applied
 #                - added new option for displaying received content
 #                - added generic error message output
 #
-##############################################################################
+#############################################################################################
 
 [CmdletBinding()]
 
 Param(
     [string]$proxy_server,
-	[Int]$proxy_port,
+    [Int]$proxy_port,
     [string]$target_url,
     [Int]$expected_code,
     [string]$expected_content,
@@ -54,9 +53,8 @@ $AllProtocols = [System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'
 
 $timeTaken = Measure-Command -Expression {
     Try {
-    
-            # try to fetch web page via requested proxy
-            $proxyResult = ( Invoke-WebRequest -Proxy http://${proxy_server}:${proxy_port} -ProxyUseDefaultCredentials -Uri ${target_url} -TimeoutSec $crit_response_time )
+        # try to fetch web page via requested proxy
+        $proxyResult = ( Invoke-WebRequest -Proxy http://${proxy_server}:${proxy_port} -ProxyUseDefaultCredentials -Uri ${target_url} -TimeoutSec $crit_response_time )
     } Catch {
         # this is needed for any other statuscode than 200
         $proxyResult = $_.Exception.Response
@@ -78,10 +76,9 @@ $timeTaken = Measure-Command -Expression {
             $reader.BaseStream.Position = 0
             $reader.DiscardBufferedData()
             $content = $reader.ReadToEnd();
-        }
-    }
-}
-# Finally {
+        } # endif errorMessage
+    } # end try/catch
+} # end timeTaken
 
         # response time
         $seconds = $timeTaken.TotalSeconds
@@ -110,7 +107,7 @@ $timeTaken = Measure-Command -Expression {
             $returnState = 0
             $returnString = $returnString + "Code matches '" + $expected_code + "'"
 
-        }
+        } # end if expected code
 
         # ------
         # Comparison of content
@@ -137,11 +134,12 @@ $timeTaken = Measure-Command -Expression {
             }
             $returnString = $returnString + " content matches " + $expected_content
 
-            # if response didn't match, we won't lower the return code
+            # if response didn't match, we won't lower the return code if has been higher before
             If ( $returnState -eq 0 ) {
                 $returnState = 0
             }
-        } 
+        } # end if expected content
+	
         $returnString = $returnStates[$returnState] + ": " + $returnString + "|" + $perf
 
         If ( $display_content -eq 1 ) {
@@ -150,4 +148,3 @@ $timeTaken = Measure-Command -Expression {
 
     Write-Host $returnString
     exit $returnState
-#}
