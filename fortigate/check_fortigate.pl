@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/perl -w
 # nagios: -epn
 # icinga: -epn
 # This Plugin checks the cluster state of FortiGate
@@ -9,12 +9,12 @@
 # Tested on: FortiAnalyzer (5.2.4)
 #
 # Author: Oliver Skibbe (oliskibbe (at) gmail.com)
-# Date: 2016-06-02
+# Date: 2017-01-11
 #
 # Changelog:
 # Release 1.0 (2013)
 # - initial release (cluster, cpu, memory, session support)
-# - added vpn support, based on check_fortigate_vpn.pl: 
+# - added vpn support, based on check_fortigate_vpn.pl:
 #   Copyright (c) 2009 Gerrit Doornenbal, g(dot)doornenbal(at)hccnet(dot)nl
 # Release 1.4 (2015-02-26) Oliver Skibbe (oliskibbe (at) gmail.com)
 # - some code cleanup
@@ -53,7 +53,7 @@
 # Release 1.6.1 (2016-05-03) Oliver Skibbe (oliskibbe (at) gmail.com)
 # - added retrieval of firmware version to disable sync check on older firmware
 #   versions
-# - fixed cluster check for standalone machines 
+# - fixed cluster check for standalone machines
 # Release 1.7.0 (2016-06-02) Oliver Skibbe (oliskibbe (at) gmail.com) / Alexandre Rigaud (arigaud.prosodie.cap (at) free.fr)
 # - added checks for FortiMail (cpu, mem, log disk,mail disk, load, ses)
 # - autodetect device with s/n (http://kb.fortinet.com/kb/viewContent.do?externalId=FD31964)
@@ -63,8 +63,13 @@
 # - fixed snmp version, now version 1 is also supported
 # - fixed hardware check, return unk if no sensors available
 # - added firmware check with -w/-c support
-# Relase 1.7.2 (2016-11-11) Oliver Skibbe (oliskibbe (at) gmail.com)
+# Release 1.7.2 (2016-11-11) Oliver Skibbe (oliskibbe (at) gmail.com)
 # - replaced switch/case by given/when to improve performance
+# Release 1.7.3 (2016-11-14) Oliver Skibbe (oliskibbe (at) gmail.com)
+# - fixed FortiAnalyzer detection (serial beginning with FL or FAZ)
+# Release 1.7.4 (2017-01-11) Oliver Skibbe (oliskibbe (at) gmail.com)
+# - fixed warnings on higher perl versions
+# - fixed warnings regarding uninitialized values
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -82,6 +87,8 @@
 
 use strict;
 use feature ":5.10";
+no if ($] >= 5.018), 'warnings' => 'experimental::smartmatch';
+
 use Net::SNMP;
 use List::Compare;
 use Getopt::Long qw(:config no_ignore_case bundling);
@@ -90,7 +97,7 @@ use Socket;
 use POSIX;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.7.2";
+my $script_version = "1.7.4";
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
@@ -203,7 +210,7 @@ my $curr_serial = get_snmp_value($session, $oid_serial);
 
 # Use s/n to determinate device
 given ( $curr_serial ) {
-   when ( /^FL/ ) { # FL = FORTIANALYZER
+   when ( /^(FL|FAZ)/ ) { # FL|FAZ = FORTIANALYZER
       given ( lc($type) ) {
          when ("cpu") { ($return_state, $return_string) = get_health_value($oid_faz_cpu_used, "CPU", "%"); }
          when ("mem") { ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%"); }
@@ -312,7 +319,7 @@ sub get_firmware_state {
 sub get_health_value {
   my $label = $_[1];
   my $UOM   = $_[2];
- 
+
   if ( $slave == 1 ) {
       $oid = $_[0] . ".2";
       $label = "slave_" . $label;
@@ -359,7 +366,7 @@ sub get_faz_health_value {
 
   $value = floor($used_value/$avail_value*100);
 
-  if ( $value >= $crit ) {
+ if ( $value >= $crit ) {
     $return_state = "CRITICAL";
     $return_string = $label . " is critical: " . $value . $UOM;
   } elsif ( $value >= $warn ) {
@@ -391,8 +398,8 @@ sub get_cluster_state {
   my %snmp_serials = %{get_snmp_table($session, $oid_cluster_serials)};
   my $cluster_type = get_snmp_value($session, $oid_cluster_type);
   my %cluster_types = (
-                        1 => "Standalone", 
-                        2 => "Active/Active", 
+                        1 => "Standalone",
+                        2 => "Active/Active",
                         3 => "Active/Passive"
   );
   my %cluster_sync_states = (
@@ -411,13 +418,13 @@ sub get_cluster_state {
         print (SERIALHANDLE $value . "\n");
       }
     }
-  
+
     # snmp serials
     while (($oid, $value) = each (%snmp_serials)) {
-      chomp; # remove "\n" if exists
+      chomp $value; # remove "\n" if exists
       push @help_serials, $value;
     }
-  
+
     # if less then 2 nodes found: critical
     if ( scalar(@help_serials) < 2  && $cluster_type != 1 ) {
       $return_string = "HA (" . $cluster_types{$cluster_type} . ") inactive, single node found: " . $curr_serial;
@@ -429,7 +436,7 @@ sub get_cluster_state {
       my @file_serials = <SERIALHANDLE>; # push lines into file_serials
       chomp(@file_serials);              # remove "\n" if exists in array elements
       close (SERIALHANDLE);              # close file handle
-  
+
       # compare serial arrays
       my $comparedList = List::Compare->new('--unsorted', \@help_serials, \@file_serials);
       if ( $comparedList->is_LequivalentR ) {
@@ -440,7 +447,7 @@ sub get_cluster_state {
         $return_state = "WARNING";
       } # end compare serial list
     } # end scalar count
-  
+
     if ( $return_state eq "OK"  && $firmware_version !~ /.*v4\.0\..*/) {
       my %cluster_sync_state = %{get_snmp_table($session, $oid_cluster_sync_state)};
         while (($oid, $value) = each (%cluster_sync_state)) {
@@ -456,10 +463,10 @@ sub get_cluster_state {
       $return_string = $return_string . ", preferred master " . $pri_serial . " is not master!";
       $return_state = "CRITICAL";
     }
-  
+
     # Write an output string...
     $return_string = $return_state . ": " . $curr_device . "@" . $firmware_version . " (Master: " . $curr_serial . ", Slave: " . $help_serials[$#help_serials] . "): " . $return_string;
-    $return_string .= $firmware_version !~ /.*v4\.0\..*/  ? ", " . $sync_string : ''; 
+    $return_string .= $firmware_version !~ /.*v4\.0\..*/  ? ", " . $sync_string : '';
   } else {
     $return_state = "OK";
     $return_string = $return_state . ": " . $curr_device . "@" . $firmware_version . " HA: " . $cluster_types{$cluster_type};
@@ -477,9 +484,9 @@ sub get_vpn_state {
   my $return_string_errors = "";
 
   # Enumeration for the tunnel up/down states
-  my %entitystate = ( 
+  my %entitystate = (
                       '1' => 'down',
-                      '2' => 'up' 
+                      '2' => 'up'
                     );
   $return_state = "OK";
 
@@ -490,7 +497,7 @@ sub get_vpn_state {
   }
   # Unless specifically requesting SSL checks only, do an IPSec tunnel check
   if ($vpnmode ne "ssl") {
-  # N/A as of 2015    
+  # N/A as of 2015
 #    # Get just the top level tunnel data
     my %tunnels = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunndx)};
 
@@ -556,20 +563,20 @@ sub get_wtp_state {
   my $downwtp = "";
 
   # Enumeration for the wtp up/down states
-  my %entitystate = ( 
-                       '1' => 'down', 
-                       '2' => 'up' 
+  my %entitystate = (
+                       '1' => 'down',
+                       '2' => 'up'
                     );
 
   $return_state = "OK";
-  
+
   $wtpcount = get_snmp_value($session, $oid_wtpmanaged);
-  
+
   if ($wtpcount > 0) {
     my %wtp_id_table = %{get_snmp_table($session, $oid_apidtableroot)};
     my %wtp_ipaddr_table = %{get_snmp_table($session, $oid_apipaddrtableroot)};
     my %wtp_state_table = %{get_snmp_table($session, $oid_apstatetableroot)};
-    
+
     foreach $k (keys(%wtp_state_table)) {
       if ( $entitystate{$wtp_state_table{$k}} eq "up" )  {
         $wtponline++;
@@ -582,20 +589,20 @@ sub get_wtp_state {
         $downwtp .= get_snmp_value($session, $oid_apidtableroot . $apk)."/".inet_ntoa( pack( "N", hex( get_snmp_value($session, $oid_apipaddrtableroot . $apk)) ) );
       } # end wtp state up down
     } # end wtp while
-  
+
     $value = ($wtpoffline / $wtpcount) * 100;
-      
+
     if ( $value >= $crit ) {
       $return_state = "CRITICAL";
     } elsif ( $value >= $warn ) {
       $return_state = "WARNING";
     }
-  
+
     $return_string = "$return_state - $wtpoffline offline WiFi access point(s) over $wtpcount found : ".(sprintf("%.2f",$value))." $UOM : ".$downwtp;
   } else  {
     $return_string = "No wtp configured.";
   }
-  
+
   return ($return_state, $return_string);
 } # end wtp state
 
@@ -604,23 +611,33 @@ sub get_hw_state{
    my $sensor_cnt = get_snmp_value($session, $oid_hwsensor_cnt);
    if ( $sensor_cnt > 0 ) {
       my %hw_name_table = %{get_snmp_table($session, $oid_hwsensorname)};
-   
-   
+
+
       my %hwsensoralarmstatus= (
          0 => 'False',
          1 => 'True'
       );
-   
+
       $return_state = "OK";
       $return_string = "All components are in appropriate state";
       foreach $k (keys(%hw_name_table)) {
             my $unit;
             my $hw_name = $hw_name_table{$k};
             my $sensoralr;
-            if ($hw_name  =~ /Fan\s/) { $unit = "RPM"; }
-            elsif ($hw_name  =~ /^DTS\sCPU[0-9]?|Temp|LM75|^ADT74(90|62)\s.+/) { $unit = "C"; }
-            elsif ($hw_name  =~ /^VCCP|^P[13]V[138]_.+|^AD[_\+].+|^\+(12|5|3\.3|1\.5|1\.25|1\.1)V|^PS[0-9]\s(VIN|VOUT|12V\sOutput)|^AD[_\+].+|^INA219\sPS[0-9]\sV(sht|bus)/) { $unit = "V"; }
-            else { $unit = "?"; }
+            given ( $hw_name ) {
+              when ( /Fan\s/) {
+                $unit = "RPM";
+              }
+              when ( /^DTS\sCPU[0-9]?|Temp|LM75|^ADT74(90|62)\s.+/) {
+                $unit = "C";
+              }
+              when ( /^VCCP|^P[13]V[138]_.+|^AD[_\+].+|^\+(12|5|3\.3|1\.5|1\.25|
+                       1\.1)V|^PS[0-9]\s(VIN|VOUT|12V\sOutput)|^AD[_\+].+|
+                       ^INA219\sPS[0-9]\sV(sht|bus)/) {
+                $unit = "V";
+              }
+              default { $unit = "?"; }
+            }
             my @num = split(/\./, $k);
             my $sensorid = $num[$#num];
             my $oid_alarm = $oid_hwsensoralarm . ".$sensorid";
@@ -710,7 +727,7 @@ sub parse_args {
   my $type          = "status";
   my $warn          = 80;
   my $crit          = 90;
-  my $slave         = undef;
+  my $slave         = 0;
   my $vpnmode       = "both";
   my $mode          = 2;
   my $path          = "/var/spool/nagios/ramdisk/FortiSerial";
@@ -788,7 +805,7 @@ INTEGER - SNMP Version on the indicated host, possible values 1,2,3 and defaults
 =over 1
 
 =item B<-U|--username>
-STRING - username 
+STRING - username
 
 =item B<-A|--authpassword>
 STRING - authentication password
@@ -863,13 +880,13 @@ Administrative Access: Enable SNMP
 =item 3.
 Select Config -> SNMP
 
-=item 4. 
+=item 4.
 Enable SNMP, fill your details
 
-=item 5. 
+=item 5.
 SNMP v1/v2c: Create new
 
-=item 6. 
+=item 6.
 Configure for your needs, Traps are not required for this plugin!
 
 =back
