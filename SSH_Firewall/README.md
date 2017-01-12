@@ -17,7 +17,9 @@ $ chmod 600 /home/nagiosclient/.ssh/authorized_keys
 
 ## Configuration
 ###SSH
-add command="path/ssh_firewall.pl" to authorized_keys file:
+add command="path/ssh_firewall.pl" to authorized_keys file
+
+Example:
 command="/usr/local/bin/ssh_firewall.pl" ssh-rsa foobar4223dieoffenbarung
 
 ###Local shell
