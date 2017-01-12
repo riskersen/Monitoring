@@ -9,7 +9,7 @@
 # Tested on: FortiAnalyzer (5.2.4)
 #
 # Author: Oliver Skibbe (oliskibbe (at) gmail.com)
-# Date: 2017-01-11
+# Date: 2017-01-12
 #
 # Changelog:
 # Release 1.0 (2013)
@@ -70,6 +70,8 @@
 # Release 1.7.4 (2017-01-11) Oliver Skibbe (oliskibbe (at) gmail.com)
 # - fixed warnings on higher perl versions
 # - fixed warnings regarding uninitialized values
+# Release 1.8.0 (2017-01-12) Oliver Skibbe (oliskibbe (at) gmail.com)
+# - Added cpu,mem,log disk, load FortiADC checks
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -97,7 +99,7 @@ use Socket;
 use POSIX;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.7.4";
+my $script_version = "1.8.0";
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
@@ -166,6 +168,12 @@ my $oid_fe_mdisk         = ".1.3.6.1.4.1.12356.105.1.9.0";         # Location of
 my $oid_fe_load          = ".1.3.6.1.4.1.12356.105.1.30.0";        # Location of Load used for FortiMail (%)
 my $oid_fe_ses           = ".1.3.6.1.4.1.12356.105.1.10.0";        # Location of cluster member Sessions for FortiMail (int)
 
+## FortiADC OIDs ##
+my $oid_fad_cpu           = ".1.3.6.1.4.1.12356.112.1.5.0";        # Location of CPU for FortiADC (%)
+my $oid_fad_mem           = ".1.3.6.1.4.1.12356.112.1.6.0";        # Location of Memory used for FortiADC (%)
+my $oid_fad_ldisk         = ".1.3.6.1.4.1.12356.112.1.30.0";       # Location of Log Disk used for FortiADC (%)
+my $oid_fad_load          = ".1.3.6.1.4.1.12356.112.1.40.0";       # Location of Load used for FortiADC (%)
+
 # Cluster
 my $oid_cluster_type     = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of Fortinet cluster type (String)
 my $oid_cluster_serials  = ".1.3.6.1.4.1.12356.101.13.2.1.1.2";    # Location of Cluster serials (String)
@@ -227,6 +235,14 @@ given ( $curr_serial ) {
          when ("load") { ($return_state, $return_string) = get_health_value($oid_fe_load, "Load", "%"); }
          when ("ses") { ($return_state, $return_string) = get_health_value($oid_fe_ses, "Session", ""); }
          default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: No selected type -T, $curr_device is a FORTIMAIL (S/N: $curr_serial)"); }
+      }
+   } when ( /^FAD/ ) { # FAD = FortiADC
+      given ( lc($type) ) {
+         when ("cpu")   { ($return_state, $return_string) = get_health_value($oid_fad_cpu, "CPU", "%"); }
+         when ("mem")   { ($return_state, $return_string) = get_health_value($oid_fad_mem, "Memory", "%"); }
+         when ("ldisk") { ($return_state, $return_string) = get_health_value($oid_fad_ldisk, "Log Disk", "%"); }
+         when ("load")  { ($return_state, $return_string) = get_health_value($oid_fad_load, "Load", "%"); }
+         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: No selected type -T, $curr_device is a FortiADC (S/N: $curr_serial)"); }
       }
    } default { # OTHERS (FG = FORTIGATE...)
       given ( lc($type) ) {
