@@ -6,21 +6,20 @@
 # This script shall be configured as ssh users shell
 #
 # Author: Oliver Skibbe (oliskibbe (at) gmail.com)
-# Date: 2017-01-11
+# Date: 2017-01-12
 #
 # Changelog:
 # Release 1.0 (2017-01-11)
 # - initial release
-
+# Release 1.1 (2017-01-12)
+# - moved to SSH_ORIGINAL_COMMAND
+#
 
 use strict;
 use File::Basename;
 
-# remove bashs "-c" from arguments
-shift @ARGV;
-
 # check if atleast 1 arg is given
-if ( @ARGV < 1 ) {
+if ( ! length $ENV{SSH_ORIGINAL_COMMAND} > 0 ) {
   print "UNKNOWN: not enough args\n";
   exit(3);
 }
@@ -32,7 +31,7 @@ my $allowed_path = "/usr/local/bin";
 my $script_name = undef;
 
 # prepare array of command string
-my @ssh_command = split(" ", $ARGV[0]);
+my @ssh_command = split(" ", $ENV{SSH_ORIGINAL_COMMAND});
 
 # extract script name and check if path is allowed 
 # but no output of the actual allowed path because of security reason
