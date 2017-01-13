@@ -169,10 +169,11 @@ my $oid_fe_load          = ".1.3.6.1.4.1.12356.105.1.30.0";        # Location of
 my $oid_fe_ses           = ".1.3.6.1.4.1.12356.105.1.10.0";        # Location of cluster member Sessions for FortiMail (int)
 
 ## FortiADC OIDs ##
-my $oid_fad_cpu           = ".1.3.6.1.4.1.12356.112.1.5.0";        # Location of CPU for FortiADC (%)
-my $oid_fad_mem           = ".1.3.6.1.4.1.12356.112.1.6.0";        # Location of Memory used for FortiADC (%)
-my $oid_fad_ldisk         = ".1.3.6.1.4.1.12356.112.1.30.0";       # Location of Log Disk used for FortiADC (%)
-my $oid_fad_load          = ".1.3.6.1.4.1.12356.112.1.40.0";       # Location of Load used for FortiADC (%)
+my $oid_fad_mem           = ".1.3.6.1.4.1.12356.112.1.5.0";        # Location of Memory for FortiADC (%)
+my $oid_fad_ldisk         = ".1.3.6.1.4.1.12356.112.1.6.0";        # Location of Log Disk Usage for FortiADC (%)
+my $oid_fad_load          = ".1.3.6.1.4.1.12356.112.1.30.0";       # Location of Load used for FortiADC (%)
+#  my $oid_fad_load       = ".1.3.6.1.4.1.12356.112.1.40.0";    	 # "SNMP No Such Object"
+my $oid_fad_cpu			  = ".1.3.6.1.4.1.12356.112.1.4.0";			 # Location of CPU for FortiADC (%)
 
 # Cluster
 my $oid_cluster_type     = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of Fortinet cluster type (String)
