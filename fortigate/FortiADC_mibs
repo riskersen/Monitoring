@@ -1,0 +1,56 @@
+## additional OIDS for FortiADC ##
+### HA ###
+# .1.3.6.1.4.1.12356.112.1.200.1.0     # [DISCARD] HA Mode (Standalone, Active-Active, Active-Active-Vrrp, Active-Passive)
+# .1.3.6.1.4.1.12356.112.6.5.1         # fadcHACurMode  High-availability mode (Standalone, Active-Active, Active-Active-Vrrp or Active-Passive). Name/OID: fadcHAMode.0; Value (Integer): standalone  (1)
+# .1.3.6.1.4.1.12356.112.6.5.2         # fadcHACurState  The state of HA. Name/OID: fadcHACurState.0; Value (OctetString): standalone mode
+# .1.3.6.1.4.1.12356.112.6.5.3         # fadcHAPeerCount  The count of Peer. Name/OID: fadcHAPeerCount.0; Value (Integer): 0
+# .1.3.6.1.4.1.12356.112.6.5.4         # fadcMoniterIntfCount  The count of Moniter Interface Name/OID: fadcMoniterIntfCount.0; Value (Integer): 0
+# .1.3.6.1.4.1.12356.112.6.5.5         # fadcDiskState    The state of disk. (0 for good, 1 for bad) Name/OID: fadcDiskState.0; Value (Integer): 0
+# .1.3.6.1.4.1.12356.112.6.5.6         # fadcHALastChangedTime   Last changed status time of HA. Name/OID: fadcHALastChangedTime.0; Value (OctetString): Thu Jan  1 01:00:00 1970
+# .1.3.6.1.4.1.12356.112.6.5.7         # fadcHALastChangedReason  Last changed status reason of HA. Name/OID: fadcHALastChangedReason.0; Value (OctetString):
+#### HA Sync ####
+# .1.3.6.1.4.1.12356.112.6.5.20.1.1.1  # fadcSyncTypeIndex An index uniquely defining a sync type within the fadcHASyncStatsTable.
+# .1.3.6.1.4.1.12356.112.6.5.20.1.1.2  # fadcSyncType The name of sync type. Indexes    fadcSyncTypeIndex Name/OID: fadcSyncType.1; Value (OctetString): L4 Session and Persistence; Name/OID: fadcSyncType.2; Value (OctetString): L7 Persistence
+# .1.3.6.1.4.1.12356.112.6.5.20.1.1.3  # fadcSyncSent  The number of sync pkts sent. Name/OID: fadcSyncSent.1; Value (Integer): 0 ; Name/OID: fadcSyncSent.2; Value (Integer): 0
+# .1.3.6.1.4.1.12356.112.6.5.20.1.1.4  # fadcSyncReceived The number of sync pkts received. Name/OID: fadcSyncReceived.1; Value (Integer): 0; Name/OID: fadcSyncReceived.2; Value (Integer): 0
+#### HA Peer Info ####
+# .1.3.6.1.4.1.12356.112.6.5.22.1.1.1  # fadcPeerIndex  An index uniquely defining a peer within the fadcHAPeerTable.
+# .1.3.6.1.4.1.12356.112.6.5.22.1.1.2  # fadcPeerSerialNumber  The serial number of peer.
+# .1.3.6.1.4.1.12356.112.6.5.22.1.1.3  # fadcPeerStatus The status of peer.
+# .1.3.6.1.4.1.12356.112.6.5.22.1.1.4  # fadcNodeID  The node id of peer.
+# .1.3.6.1.4.1.12356.112.6.5.22.1.1.5  # fadcIPAddress  The ip address of peer.
+
+### Virtual Server ###
+# .1.3.6.1.4.1.12356.112.3.1           # Number of Virtual Servers in fadcVirtualServer
+# .1.3.6.1.4.1.12356.112.3.2.1.1.1     # fadcVSIndex: An index uniquely defining a virtual server within the fadcVSTable. fadcVSIndex.1 = 1;  fadcVSIndex.2 = 2 and so on
+# .1.3.6.1.4.1.12356.112.3.2.1.2       # fadcVSName: The server name of the specified virtual server. Indexes: fadcVSIndex ; Name/OID: fadcVSName.1; Value (OctetString): my_vs1; fadcVSName.2; Value (OctetString): my_vs2....
+# .1.3.6.1.4.1.12356.112.3.2.1.3       # fadcVSStatus: The configuration status of specified virtual server. Indexes:    fadcVSIndex; fadcVSStatus.1  Enable
+# .1.3.6.1.4.1.12356.112.3.2.1.4       # fadcVSHealth: The health of specified virtual server.  Indexes: fadcVSIndex ; Name/OID: fadcVSHealth.1; Value (OctetString): Healthy; Name/OID: fadcVSHealth.5; Value (OctetString): Unhealthy
+# .1.3.6.1.4.1.12356.112.3.2.1.8       # fadcVSVdom: The virtual domian of the specified virtual server. Indexes   fadcVSIndex;  Name/OID: fadcVSVdom.1; Value (OctetString): root
+# .1.3.6.1.4.1.12356.112.3.2.1.5       # fadcVSNewConnections: New Connections persecond rate for the specified virtual server. Indexes:   fadcVSIndex;  Name/OID: fadcVSNewConnections.1 ; Value (Integer): 0
+# .1.3.6.1.4.1.12356.112.3.2.1.6       # fadcVSConcurrent: Concurrent connection rate for the specified virtual server. Indexes:  fadcVSIndex ; Name/OID: fadcVSConcurrent.1; Value (Integer): 0
+
+### Virtual Domains ###
+# .1.3.6.1.4.1.12356.112.2.1.1         # fadcVdNumber The number of virtual domains in vdTable. Name/OID: fadcVdNumber.0; Value (Integer): 1
+# .1.3.6.1.4.1.12356.112.2.1.2         # fadcVdMaxVdoms The maximum number of virtual domains allowed on the device as allowed by hardware and/or licensing. Name/OID: fadcVdMaxVdoms.0; Value (Integer): 10
+# .1.3.6.1.4.1.12356.112.2.1.3         # fadcVdEnabled Whether virtual domains are enabled on this device.Name/OID: fadcVdEnabled.0; Value (Integer): disabled  (1)
+# .1.3.6.1.4.1.12356.112.2.2.1.1.3     # HA Cluster Member state of the virtual domain on this device (master(1),backup(2), standalone(3), unknown(4)); Name/OID: fadcVdEntHaState.1; Value (Integer): standalone  (3)
+
+### Hardware Health ###
+#### CPU ####
+# .1.3.6.1.4.1.12356.112.1.40.1.2      # fadcCPUName The name of the CPU. Indexes    fadcCpuIndex. Name/OID: fadcCPUName.1; Value (OctetString): Core 1; Name/OID: fadcCPUName.2; Value (OctetString): Core 2
+# .1.3.6.1.4.1.12356.112.6.1.1.1.3     # fadcCPUTemp The air temperature of the host CPU. Indexes   fadcCPUIndex. Name/OID: fadcCPUTemp.1; Value (Integer): 31; Name/OID: fadcCPUTemp.2; Value (Integer): 29
+#### Port Link Name ####
+# .1.3.6.1.4.1.12356.112.6.3.1.1.2     # fadcPortLinkName The port link name. Indexes   fadcNetworkIndex. Name/OID: fadcPortLinkName.1; Value (OctetString): port1
+# .1.3.6.1.4.1.12356.112.6.3.1.1.3     # fadcPortLinkStatus The port link status. Indexes  fadcNetworkIndex. Name/OID: fadcPortLinkStatus.1; Value (OctetString): up
+#### Device Temp. ####
+# .1.3.6.1.4.1.12356.112.6.4.1.1.1.2   # fadcDeviceTempName The name of the device. Indexes   fadcDeviceTempIndex. Name/OID: fadcDeviceTempName.1; Value (OctetString): System temp1
+# .1.3.6.1.4.1.12356.112.6.4.1.1.1.3   # fadcDeviceTempValueThe air temperature of the device. Indexes    fadcDeviceTempIndex. Name/OID: fadcDeviceTempValue.1; Value (Integer): 32
+#### Device Fan ####
+# .1.3.6.1.4.1.12356.112.6.4.2.1.1.2   # fadcDeviceFanName The Devcice fan name. Indexes fadcDeviceFanIndex. Name/OID: fadcDeviceFanName.1; Value (OctetString): System fan1; Name/OID: fadcDeviceFanName.2; Value (OctetString): System fan2
+# .1.3.6.1.4.1.12356.112.6.4.2.1.1.3   # fadcDeviceFanSpeed The Device fan speed. Indexes  fadcDeviceFanIndex. Name/OID: fadcDeviceFanSpeed.1; Value (Integer): 6490; Name/OID: fadcDeviceFanSpeed.2; Value (Integer): 6192
+# .1.3.6.1.4.1.12356.112.6.4.2.1.1.2   # fadcDeviceFanStatus  The Devcice fan tray status. (0 for good, 1 for bad or removed) Indexes   fadcDeviceFanIndex Name/OID: fadcDeviceFanStatus.1; Value (OctetString): Good; Name/OID: fadcDeviceFanStatus.2; Value (OctetString): Good
+
+### Security ###
+# .1.3.6.1.4.1.12356.112.7.1           # Current DOS attack status. (1 for attacking, 0 for no attack). Name/OID: fadcDDoSAttackStatus.0; Value (Integer): 0
+
