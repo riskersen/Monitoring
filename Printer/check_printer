@@ -1,19 +1,19 @@
 #!/usr/bin/php
 <?php
 /*
- * Ciphron - Advanced Security
- *
- * Tel.: (05 11) 5151 33 0 Fax: (05 11) 5151 33 - 29
- * Web: http://www.ciphron.de/ Support: (05 11) 5151 33 - 11
- *
  * Advanced Nagios printer check
  *
  *
  * @author: jk@ciphron.de
  * @updated by: oliskibbe@gmail.com
- * @bugfixes / improvements by: Sebastian Puschhof (MIDAN Software GmbH), Juan Jesús Cervera (Teruel)
+ * @bugfixes / improvements by: 
+ * 	- Sebastian Puschhof (MIDAN Software GmbH)
+ *	- Juan Jesús Cervera (Teruel)
  *
- * Last update: 2016-07-27
+ * Last update: 2017-02-07
+ * Changelog:
+ *	2017-02-07 - Oliver Skibbe oliskibbe@gmail.com
+ *		- Added UOM "c" to perfdata output
  */
 
 // ignore notices
@@ -132,7 +132,7 @@ function nagios_return ( $return, $str, $perfdata = array() ) {
 			if ( isset ( $perf['max'] ) )
 				$str .= $perf['max'];
 			$str = preg_replace ( '@(;+)$@', ';', $str );
-			echo $str." ";
+			echo $str."c ";
 		}
 	}
 	exit($return);
