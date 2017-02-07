@@ -21,6 +21,8 @@
 #    along with this program; if not, write to the Free Software
 #    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA    02111-1307    USA
 #
+# 2017-02-07: Oliver Skibbe oliskibbe (at) gmail.com
+#	- added SNMPv1 support
 # 2016-11-29: Oliver Skibbe oliskibbe (at) gmail.com
 #       - disabling icinga embedded perl interpreter
 #       - fixed external sensor option
@@ -72,7 +74,7 @@ my ($ip, $community, $version, $user_name, $auth_password, $auth_prot, $priv_pas
 my $net_snmp_debug_level = 0x00;	# See http://search.cpan.org/~dtown/Net-SNMP-v6.0.1/lib/Net/SNMP.pm#debug()_-_set_or_get_the_debug_mode_for_the_module
 
 $script    = "check_ups_apc.pl";
-$script_version = "1.4.1";
+$script_version = "1.5";
 
 $timeout = 10;			# SNMP query timeout
 $status = 0;
@@ -135,6 +137,7 @@ if ( $version == 3 ) {
 	($s, $e) = get_snmp_session(
 				$ip, 
 				$community, 
+				$version
 			);	# Open an SNMP connection...
 }
 
@@ -536,14 +539,15 @@ sub main {
 sub get_snmp_session {
   my $ip        = $_[0];
   my $community = $_[1];
+  my $version   = $_[2];
   my ($session, $error) = Net::SNMP->session(
              	-hostname  => $ip,
              	-community => $community,
              	-port      => 161,
              	-timeout   => 5,
              	-retries   => 3,
-		-debug		=> $net_snmp_debug_level,
-		-version	=> 2,
+		-debug	   => $net_snmp_debug_level,
+		-version   => $version,
               );
   return ($session, $error);
 } # end get snmp session
