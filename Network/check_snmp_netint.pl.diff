@@ -1,0 +1,306 @@
+--- check_snmp_netint.pl.org	2017-03-15 09:25:28.792349545 +0100
++++ check_snmp_netint.pl	2016-12-12 08:11:28.171874255 +0100
+@@ -509,6 +509,10 @@
+ #		       Due to this plugin now require Text::ParseWords perl library.
+ #		    4) List of contributors created as a separate header section below.
+ #
++# [2.37] 08/29/16 - 1) Added duplex check -a
++#                   2) speed check is now minimum check instead of equal
++#                   3) if duplex state is 0, then skip this and skip also speed check
++#
+ # ============================ LIST OF CONTRIBUTORS ===============================
+ #
+ # The following individuals have contributed code, patches, bug fixes and ideas to
+@@ -526,6 +530,7 @@
+ #    Steve Hanselman
+ #    Sébastien PRUD'HOMME
+ #    Nicholas Scott
++#    Oliver Skibbe
+ #
+ # Open source community is forever grateful for all your contributions.
+ #
+@@ -536,7 +541,7 @@
+ use Text::ParseWords;
+ 
+ # Nagios specific
+-use lib "/usr/local/nagios/libexec";
++use lib "/usr/lib64/nagios/plugins";
+ our $TIMEOUT;
+ our %ERRORS;
+ eval 'use utils qw(%ERRORS $TIMEOUT)';
+@@ -552,7 +557,7 @@
+ }
+ 
+ # Version
+-my $Version='2.36';
++my $Version='2.37';
+ 
+ ############### BASE DIRECTORY FOR TEMP FILE (override this with -F) ########
+ my $o_base_dir="/tmp/tmp_Nagios_int.";
+@@ -566,6 +571,7 @@
+ my $admin_table = '1.3.6.1.2.1.2.2.1.7.';
+ my $speed_table = '1.3.6.1.2.1.2.2.1.5.';
+ my $speed_table_64 = '1.3.6.1.2.1.31.1.1.1.15.';
++my $duplex_table = '1.3.6.1.2.1.10.7.2.1.19.';
+ my $in_octet_table = '1.3.6.1.2.1.2.2.1.10.';
+ my $in_octet_table_64 = '1.3.6.1.2.1.31.1.1.1.6.';
+ my $in_error_table = '1.3.6.1.2.1.2.2.1.14.';
+@@ -594,6 +600,9 @@
+ my %stp_portstate=('0'=>'unknown',1=>'disabled',2=>'blocking',3=>'listening',4=>'learning',5=>'forwarding',6=>'broken');
+ my %stp_portstate_reverse=(); # becomes reverse of above, i.e. 'disabled'=>1, etc
+ 
++# duplex states 
++my %duplex_status = ( 0 => 'interfaceDown', 1 => 'unknown', 2 => 'halfDuplex', 3 => 'fullDuplex' );
++
+ # Standard options
+ my $o_host = 		undef; 	# hostname
+ my $o_timeout=  	undef;  # Timeout (Default 10)
+@@ -634,6 +643,9 @@
+ 				# (2 numbers: one fo take affect in addition to regular
+ 			        #  threshold, 2nd number is to take
+ 
++# Duplex option
++my $o_duplex=		undef;	# duplex option
++
+ # Performance data options
+ my $o_perf=             undef;  # Output performance data
+ my $o_perfe=            undef;  # Output discard/error also in perf data
+@@ -685,6 +697,8 @@
+ my $timenow=time(); 	# This used to be defined later but easier if moved to the top
+ my $stp_warntime=900;	# Warn in case of change in STP state in last 15 minutes
+ my $check_speed=0;      # If '-Y', '-u' or '-S' options are given this is set to 1
++my $check_duplex=1;	# check duplex
++my $ok_duplex=3;	# 
+ my $expected_speed=0;	# if -S has interface speed specified, this is set and alert is issued if interface is not same speed
+ 
+ # Functions
+@@ -735,10 +749,19 @@
+   }
+ }
+ 
++sub prettyBits {
++ my $size = $_[0];
++ foreach ('bit/s','kbit/s','mbit/s','gbit/s','tbit/s','pbit/s')
++ {
++    return sprintf("%.2f",$size)."$_" if $size < 1000;
++    $size /= 1000;
++ }
++}
++
+ sub p_version { print "check_snmp_netint version : $Version\n"; }
+ 
+ sub print_usage {
+-    print "Usage: $0 [-v [debugfilename]] -H <host> (-C <snmp_community> [-2]) | (-l login -x passwd [-X pass -L <authp>,<privp>)  [-p <port>] [-N <desc table oid>] -n <name in desc_oid> [-O <comments table OID>] [-I] [-i | -a | -D] [-r] [-f[eSyYZ] [-P <previous perf data from nagios \$SERVICEPERFDATA\$>] [-T <previous time from nagios \$LASTSERVICECHECK\$>] [--pcount=<hist size in perf>]] [-k[qBMGu] [-S [intspeed]] -g [-w<warn levels> -c<crit levels> [-z]| -z] -d<delta>] [-o <octet_length>] [-m|-mm] [-t <timeout>] [-s] [--label] [--cisco=[oper,][addoper,][linkfault,][use_portnames|show_portnames]] [--stp[=<expected stp state>]] [-V]\n";
++    print "Usage: $0 [-v [debugfilename]] -H <host> (-C <snmp_community> [-2]) | (-l login -x passwd [-X pass -L <authp>,<privp>)  [-p <port>] [-N <desc table oid>] -n <name in desc_oid> [-O <comments table OID>] [-I] [-i | -a | -D] [-r] [-f[eSyYZ] [-P <previous perf data from nagios \$SERVICEPERFDATA\$>] [-T <previous time from nagios \$LASTSERVICECHECK\$>] [--pcount=<hist size in perf>]] [-k[qBMGu] [-S [intspeed]] -g [-w<warn levels> -c<crit levels> [-z]| -z] -d<delta>] [-o <octet_length>] [-m|-mm] [-t <timeout>] [-s] [--label] [--cisco=[oper,][addoper,][linkfault,][use_portnames|show_portnames]] [--stp[=<expected stp state>]] [-A] [-V]\n";
+ }
+ 
+ sub isnnum { # Return true if arg is not a number
+@@ -864,6 +887,8 @@
+    Use 64 bits counters instead of the standard counters when checking
+    bandwidth & performance data for interface >= 1Gbps.
+    You must use snmp v2c or v3 to get 64 bits counters.
++-A --duplex
++   Check duplex state of interface(s), goes critical if state 1,2 (Unknown, halfDuplex)
+ -B, --kbits
+    Make the warning and critical levels in K|M|G Bits/s instead of K|M|G Bytes/s
+ -G, --giga ; -M, --mega ; -u, --prct
+@@ -973,6 +998,7 @@
+         't:i'   => \$o_timeout,    	'timeout:i'	=> \$o_timeout,
+ 	'i'	=> \$o_inverse,		'inverse'	=> \$o_inverse,
+ 	'a'	=> \$o_admin,		'admin'		=> \$o_admin,
++	'A'	=> \$o_duplex,		'duplex'	=> \$o_duplex,
+ 	'D'     => \$o_dormant,         'dormant'       => \$o_dormant,
+         'I'     => \$o_ignorestatus,    'ignorestatus'  => \$o_ignorestatus,
+ 	'r'	=> \$o_noreg,		'noregexp'	=> \$o_noreg,
+@@ -1187,11 +1213,11 @@
+ check_options();
+ 
+ # Check gobal timeout if snmp screws up
+-if (defined($TIMEOUT)) {
++if (defined($TIMEOUT) && $TIMEOUT >= $o_timeout) {
+   verb("Alarm at $TIMEOUT + 5");
+   alarm($TIMEOUT+5);
+ } else {
+-  verb("no timeout defined : $o_timeout + 10");
++  verb("timeout defined : $o_timeout + 10");
+   alarm ($o_timeout+10);
+ }
+ 
+@@ -1209,6 +1235,7 @@
+     ($session, $error) = Net::SNMP->session(
+       -hostname   	=> $o_host,
+       -version		=> '3',
++      -retries          => 3,
+       -port      	=> $o_port,
+       -username		=> $o_login,
+       -authpassword	=> $o_passwd,
+@@ -1220,6 +1247,7 @@
+     ($session, $error) = Net::SNMP->session(
+       -hostname   	=> $o_host,
+       -version		=> '3',
++      -retries          => 3,
+       -username		=> $o_login,
+       -port      	=> $o_port,
+       -authpassword	=> $o_passwd,
+@@ -1235,6 +1263,7 @@
+ 	verb("SNMP v2c login");
+ 	($session, $error) = Net::SNMP->session(
+        -hostname  => $o_host,
++       -retries   => 3,
+        -version   => 2,
+        -community => $o_community,
+        -port      => $o_port,
+@@ -1245,6 +1274,7 @@
+ 	verb("SNMP v1 login");
+     ($session, $error) = Net::SNMP->session(
+        -hostname  => $o_host,
++       -retries   => 3,
+        -community => $o_community,
+        -port      => $o_port,
+        -timeout   => $o_timeout
+@@ -1277,6 +1307,7 @@
+ my @oid_descr=(); # this is actually only used with '-m' to double-check that cached index is correct
+ my @oid_speed=();
+ my @oid_speed_high=();
++my @oid_duplex=();
+ my @oid_commentlabel=();
+ my @oid_ciscostatus=();
+ my @oid_ciscofaultstatus=();
+@@ -1288,10 +1319,11 @@
+ my @cport=();
+ my @stpport=();
+ my @portspeed=();
++my @portduplex=();
+ my %copt=();
+ my %copt_next=();
+ my $num_int = 0;
+-my ($result,$resultp,$resultf,$resulto,$resultc,$results) = (undef,undef,undef,undef,undef,undef);
++my ($result,$resultp,$resultf,$resulto,$resultc,$results,$resultd) = (undef,undef,undef,undef,undef,undef,undef);
+ 
+ # WL: check if '-m' option is passed and previous description ids & names are available from
+ #     previous performance data (caching to minimize SNMP lookups and only get specific data
+@@ -1307,6 +1339,7 @@
+    $perfcache_time = $prev_perf{cache_descr_time} if exists($prev_perf{cache_descr_time});
+    @tindex = () if !defined($perfcache_time) || $timenow < $perfcache_time || ($timenow - $perfcache_time) > $perfcache_recache_trigger;
+    @portspeed = split(',', $prev_perf{cache_int_speed}) if exists($prev_perf{cache_int_speed}) && $expected_speed==0;
++   @portduplex = split(',', $prev_perf{cache_int_duplex}) if exists($prev_perf{cache_int_duplex});
+    if (exists($prev_perf{cache_cisco_opt})) {
+    	$copt{$_}=$_ foreach(split ',',$prev_perf{cache_cisco_opt});
+    }
+@@ -1318,6 +1351,7 @@
+    verb("  tindex=".join(',',@tindex));
+    verb("  descr=".join(',',@descr));
+    verb("  speed=".join(',',@portspeed)) if scalar(@portspeed)>0;
++   verb("  duplex=".join(',',@portduplex)) if scalar(@portduplex)>0;
+    verb("  copt=".join(',',keys %copt)) if scalar(keys %copt)>0;
+    if (scalar(@cport)>0) {
+      verb("  cport=".join(',',@cport));
+@@ -1467,6 +1501,9 @@
+          $oid_speed[$i]=$speed_table . $tindex[$i];
+          $oid_speed_high[$i]=$speed_table_64 . $tindex[$i];
+      }
++     if ($check_duplex && !defined($portduplex[$i])) {
++         $oid_duplex[$i]=$duplex_table . $tindex[$i];
++     }
+      if (defined($o_commentoid)) {
+        if (defined($o_ciscocat) && defined($o_cisco{show_portnames})) {
+ 	 $oid_commentlabel[$i]=$o_commentoid .'.'. $cport[$i] if $cport[$i];
+@@ -1496,6 +1533,7 @@
+ if (defined($o_minsnmp)) {
+ 	push @oids, @oid_perf if scalar(@oid_perf)>0;
+ 	push @oids, @oid_descr if scalar(@oid_descr)>0;
++	push @oids, @oid_duplex if scalar(@oid_duplex)>0;
+ 	push @oids, @oid_commentlabel if defined($o_commentoid) && scalar(@oid_commentlabel)>0;
+ 	push @oids, @oid_ciscostatus if defined($o_ciscocat) && scalar(@oid_ciscostatus)>0;
+ 	push @oids, @oid_stpstate if defined($o_stp) && scalar(@oid_stpstate)>0;
+@@ -1561,6 +1599,23 @@
+    }
+ }
+ 
++if (defined($o_duplex)) {
++   if (!defined($o_minsnmp) && scalar(@oid_duplex)>0) {
++	$resultd = $session->get_request(
++		Varbindlist => \@oid_duplex
++	);
++        if (!defined($resultd)) {
++            printf("ERROR: Can not retrieve duplex state table : %s.\n", $session->error);
++            $session->close;
++            exit $ERRORS{"UNKNOWN"};
++        }
++   }
++   else {
++        $resultd = $result;
++   }
++}
++
++
+ # Suport for comments/description table (WL)
+ if (defined($o_commentoid)) {
+    if  (!defined($o_minsnmp) && scalar(@oid_commentlabel)>0) {
+@@ -1621,6 +1676,7 @@
+ 	$int_status = $$result{ $oper_table . $tindex[$i] };
+     }
+   }
++  verb("int_status: $int_status");
+   my $int_status_opt = 0;
+   my $int_status_extratext = "";
+ 
+@@ -1770,9 +1826,28 @@
+ 	}
+   }
+ 
++  # OS: duplex data
++  # Get the duplex data
++  if (defined($oid_duplex[$i]) && defined($$resultd{$oid_duplex[$i]})) {
++	my $int_duplex_state = $$resultd{$oid_duplex[$i]};
++
++	# 0 => interface is down
++	if ( $int_duplex_state != 0 && $int_duplex_state != 1) {
++           if ( $int_duplex_state != 3 ) {
++               $final_status=2;
++           } 
++
++           $int_status_extratext.=',' if $int_status_extratext;
++	   $int_status_extratext.= $duplex_status{$int_duplex_state};
++	   verb("Duplex state for int " . $descr[$i] . ": " . $$resultd{$oid_duplex[$i]});
++        } else {
++            $int_status = 2;
++        }
++  }
++  
+   # WL: portspeed data now put in separate array
+   # Get the speed in normal or highperf speed counters
+-  if (defined($oid_speed[$i]) && defined($$resultf{$oid_speed[$i]})) {
++  if ( $int_status != 2 && defined($oid_speed[$i]) && defined($$resultf{$oid_speed[$i]})) {
+       if ($$resultf{$oid_speed[$i]} == 4294967295) { # Too high for this counter (cf IF-MIB)
+           if (! defined($o_highperf) && (defined($o_prct) || defined ($o_perfs) || defined ($o_perfp))) {
+               print "Cannot get interface speed with standard MIB, use highperf mib (-g) : UNKNOWN\n";
+@@ -1788,12 +1863,20 @@
+           $portspeed[$i]=$$resultf{$oid_speed[$i]};
+       }
+   }
+-  if ($expected_speed!=0 && defined($portspeed[$i]) && $portspeed[$i]!=$expected_speed) {
++  # OS 2016-07-28: expected speed is now minimum speed
++  if ($expected_speed != 0 && defined($portspeed[$i]) && $portspeed[$i]<$expected_speed) {
++      my $nice_speed = prettyBits($portspeed[$i]);
++      my $expected_nice_speed = prettyBits($expected_speed);
++
+       $int_status_extratext.=',' if $int_status_extratext;
+-      $int_status_extratext.="Speed=".$portspeed[$i]."bps";
+-      $int_status_extratext.=":CRIT(should be $expected_speed bps)";
++      $int_status_extratext.="Speed=".$nice_speed;
++      $int_status_extratext.=":CRIT(should be $expected_nice_speed )";
+       $int_status_opt=2;
+       $final_status=2;
++  } elsif ( defined($portspeed[$i]) ) {
++      my $nice_speed = prettyBits($portspeed[$i]);
++      $int_status_extratext.=',' if $int_status_extratext;
++      $int_status_extratext.="Speed=".$nice_speed;
+   }
+ 
+   # Make the bandwith & error checks if necessary
+@@ -2165,4 +2248,3 @@
+ print " | ",$perf_out if defined($perf_out);
+ print "\n";
+ exit $ERRORS{$exit_status};
+-
