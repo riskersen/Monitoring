@@ -103,7 +103,7 @@ my $script_version = "1.8.0";
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
-    $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path) = parse_args();
+    $blacklist, $whitelist, $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path) = parse_args();
 
 # Initialize variables....
 my $net_snmp_debug_level = 0x00; # See http://search.cpan.org/~dtown/Net-SNMP-v6.0.1/lib/Net/SNMP.pm#debug()_-_set_or_get_the_debug_mode_for_the_module
@@ -500,11 +500,10 @@ sub get_vpn_state {
   my $ActiveSSLTunnel = 0;
   my $return_string_errors = "";
 
-  # Enumeration for the tunnel up/down states
-  my %entitystate = (
-                      '1' => 'down',
-                      '2' => 'up'
-                    );
+  use constant {
+    TUNNEL_DOWN => 1,
+    TUNNEL_UP   => 2,
+  };
   $return_state = "OK";
 
   # Unless specifically requesting IPSec checks only, do an SSL connection check
@@ -516,23 +515,34 @@ sub get_vpn_state {
   if ($vpnmode ne "ssl") {
   # N/A as of 2015
 #    # Get just the top level tunnel data
-    my %tunnels = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunndx)};
+    my %tunnels_names  = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunname)};
+    my %tunnels_status = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunstatus)};
+    
+    %tunnels_names  = map { (my $temp = $_ ) =~ s/^.*\.//; $temp => $tunnels_names{$_}  } keys %tunnels_names;
+    %tunnels_status = map { (my $temp = $_ ) =~ s/^.*\.//; $temp => $tunnels_status{$_} } keys %tunnels_status;
 
-    while (($oid, $value) = each (%tunnels)) {
-      #Bump the total tunnel count
-      $ipstuncount++;
-      #If the tunnel is up, bump the connected tunnel count
-      if ( $entitystate{get_snmp_value($session, $oid_ipsectuntableroot . $oidf_tunstatus . "." . $ipstuncount)} eq "up" ) {
-        $ipstunsopen++;
-      } else {
-        #Tunnel is down. Add it to the failed counter
-        $ipstunsdown++;
-        # If we're counting failures and/or monitoring, put together an output error string of the tunnel name and its status
-        if ($mode >= 1){
-        $return_string_errors .= ", ";
-        $return_string_errors .= get_snmp_value($session, $oid_ipsectuntableroot . $oidf_tunname . "." . $ipstuncount)." ".$entitystate{get_snmp_value($session, $oid_ipsectuntableroot . $oidf_tunstatus . "." . $ipstuncount)};
-        }
-      } # end tunnel count
+    if (defined($whitelist))
+    {
+      delete $tunnels_names{$_} for grep { $tunnels_names{$_} !~ $whitelist } keys %tunnels_names;
+    }
+    if (defined($blacklist))
+    {
+      delete $tunnels_names{$_} for grep { $tunnels_names{$_} =~ $blacklist } keys %tunnels_names;
+    }
+    my %tunnels = map {
+      $_ => {
+        "name"   => $tunnels_names{$_},
+        "status" => $tunnels_status{$_}
+      }
+    } keys %tunnels_names;
+    my @tunnels_up   = map { $tunnels{$_}{"name"} } grep { $tunnels{$_}{"status"} eq TUNNEL_UP   } keys %tunnels;
+    my @tunnels_down = map { $tunnels{$_}{"name"} } grep { $tunnels{$_}{"status"} eq TUNNEL_DOWN } keys %tunnels;
+    $ipstuncount = scalar keys %tunnels;
+    $ipstunsopen = scalar @tunnels_up;
+    $ipstunsdown = scalar @tunnels_down;
+
+    if ($ipstunsdown > 0 and $mode >= 1) {
+      $return_string_errors .= sprintf("DOWN[%s]", join(", ", @tunnels_down));
     }
   }
   #Set Unitstate
@@ -556,14 +566,14 @@ sub get_vpn_state {
   $perf="|'ActiveSSL-VPN'=".$ActiveSSL." 'ActiveIPSEC'=".$ipstunsopen;
   $return_string .= $perf;
 
-  # Check to see if the output string contains either "unkw", "WARNING" or "down", and set an output state accordingly...
-  if($return_string =~/uknw/){
+  # Check to see if the output string contains either "unkw", "warning" or "down", and set an output state accordingly...
+  if($return_string =~/uknw/i){
     $return_state = "UNKNOWN";
   }
-  if($return_string =~/WARNING/){
+  if($return_string =~/warning/i){
     $return_state = "WARNING";
   }
-  if($return_string =~/down/){
+  if($return_string =~/down/i){
     $return_state = "CRITICAL";
   }
   return ($return_state, $return_string);
@@ -747,6 +757,8 @@ sub parse_args {
   my $slave         = 0;
   my $vpnmode       = "both";
   my $mode          = 2;
+  my $blacklist     = undef;
+  my $whitelist     = undef;
   my $path          = "/var/spool/nagios/ramdisk/FortiSerial";
   my $help          = 0;
 
@@ -766,6 +778,8 @@ sub parse_args {
           'serial|S:s'       => \$pri_serial,
           'vpnmode|V:s'      => \$vpnmode,
           'mode|M:s'         => \$mode,
+          'blacklist|B:s'    => \$blacklist,
+          'whitelist|W:s'    => \$whitelist,
           'warning|w:s'      => \$warn,
           'critical|c:s'     => \$crit,
           'slave|s:1'        => \$slave,
@@ -784,7 +798,7 @@ sub parse_args {
 
   return (
     $ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
-    $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path
+    $blacklist, $whitelist, $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path
   );
 }
 
@@ -874,6 +888,14 @@ STRING - Output-Mode: 0 => just print, 1 => print and show failed tunnel, 2 => c
 
 =item B<-V|--vpnmode>
 STRING - VPN-Mode: both => IPSec & SSL/OpenVPN, ipsec => IPSec only, ssl => SSL/OpenVPN only
+
+=item B<-W|--whitelist>
+STRING - Include only entries matching a regular expression (applies before --blacklist).
+Currently only applies to IPSec tunnel names.
+
+=item B<-B|--blacklist>
+STRING - Exclude entries matching a regular expression (applies after --whitelist).
+Currently only applies to IPSec tunnel names
 
 =item B<-p|--path>
 STRING - Path to store serial filenames
