@@ -521,11 +521,11 @@ sub get_vpn_state {
     %tunnels_names  = map { (my $temp = $_ ) =~ s/^.*\.//; $temp => $tunnels_names{$_}  } keys %tunnels_names;
     %tunnels_status = map { (my $temp = $_ ) =~ s/^.*\.//; $temp => $tunnels_status{$_} } keys %tunnels_status;
 
-    if (defined($whitelist))
+    if (defined($whitelist) and length($whitelist))
     {
       delete $tunnels_names{$_} for grep { $tunnels_names{$_} !~ $whitelist } keys %tunnels_names;
     }
-    if (defined($blacklist))
+    if (defined($blacklist) and length($blacklist))
     {
       delete $tunnels_names{$_} for grep { $tunnels_names{$_} =~ $blacklist } keys %tunnels_names;
     }
