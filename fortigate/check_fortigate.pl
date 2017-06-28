@@ -72,6 +72,8 @@
 # - fixed warnings regarding uninitialized values
 # Release 1.8.0 (2017-01-12) Oliver Skibbe (oliskibbe (at) gmail.com)
 # - Added cpu,mem,log disk, load FortiADC checks
+# Release 1.8.1 (2017-06-28) Alexandre Rigaud (alexandre (at) rigaudcolonna.fr)
+# - Added checks used by devices on output when selected type is missing 
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -224,8 +226,7 @@ given ( $curr_serial ) {
          when ("cpu") { ($return_state, $return_string) = get_health_value($oid_faz_cpu_used, "CPU", "%"); }
          when ("mem") { ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%"); }
          when ("disk") { ($return_state, $return_string) = get_faz_health_value($oid_faz_disk_used, $oid_faz_disk_avail, "Disk", "%"); }
-         when ("firmware") { ($return_state, $return_string) = ('UNKNOWN', "UNKNOWN: FortiAnalyzer does not support firmware oid"); }
-         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: No selected type -T, $curr_device is a FORTIANALYZER (S/N: $curr_serial)"); }
+         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|disk, $curr_device is a FORTIANALYZER (S/N: $curr_serial)"); }
       }
    } when ( /^FE/ ) { # FE = FORTIMAIL
       given ( lc($type) ) {
@@ -235,7 +236,7 @@ given ( $curr_serial ) {
          when ("ldisk") { ($return_state, $return_string) = get_health_value($oid_fe_ldisk, "Log Disk", "%"); }
          when ("load") { ($return_state, $return_string) = get_health_value($oid_fe_load, "Load", "%"); }
          when ("ses") { ($return_state, $return_string) = get_health_value($oid_fe_ses, "Session", ""); }
-         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: No selected type -T, $curr_device is a FORTIMAIL (S/N: $curr_serial)"); }
+         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|disk|ldisk|load|ses, $curr_device is a FORTIMAIL (S/N: $curr_serial)"); }
       }
    } when ( /^FAD/ ) { # FAD = FortiADC
       given ( lc($type) ) {
@@ -243,7 +244,7 @@ given ( $curr_serial ) {
          when ("mem")   { ($return_state, $return_string) = get_health_value($oid_fad_mem, "Memory", "%"); }
          when ("ldisk") { ($return_state, $return_string) = get_health_value($oid_fad_ldisk, "Log Disk", "%"); }
          when ("load")  { ($return_state, $return_string) = get_health_value($oid_fad_load, "Load", "%"); }
-         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: No selected type -T, $curr_device is a FortiADC (S/N: $curr_serial)"); }
+         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|ldisk|load, $curr_device is a FortiADC (S/N: $curr_serial)"); }
       }
    } default { # OTHERS (FG = FORTIGATE...)
       given ( lc($type) ) {
