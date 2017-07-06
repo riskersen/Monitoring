@@ -74,6 +74,7 @@
 # - Added cpu,mem,log disk, load FortiADC checks
 # Release 1.8.1 (2017-06-28) Alexandre Rigaud (alexandre (at) rigaudcolonna.fr)
 # - Added checks used by devices on output when selected type is missing 
+# - Added no check cluster option
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -101,11 +102,11 @@ use Socket;
 use POSIX;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.8.0";
+my $script_version = "1.8.1";
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
-    $blacklist, $whitelist, $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path) = parse_args();
+    $blacklist, $whitelist, $nosync, $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path) = parse_args();
 
 # Initialize variables....
 my $net_snmp_debug_level = 0x00; # See http://search.cpan.org/~dtown/Net-SNMP-v6.0.1/lib/Net/SNMP.pm#debug()_-_set_or_get_the_debug_mode_for_the_module
@@ -466,7 +467,7 @@ sub get_cluster_state {
       } # end compare serial list
     } # end scalar count
 
-    if ( $return_state eq "OK"  && $firmware_version !~ /.*v4\.0\..*/) {
+    if ( $return_state eq "OK"  && $firmware_version !~ /.*v4\.0\..*/ && !defined($nosync) ) {
       my %cluster_sync_state = %{get_snmp_table($session, $oid_cluster_sync_state)};
         while (($oid, $value) = each (%cluster_sync_state)) {
           if ( $value == 0 ) {
@@ -760,6 +761,7 @@ sub parse_args {
   my $mode          = 2;
   my $blacklist     = undef;
   my $whitelist     = undef;
+  my $nosync        = undef;
   my $path          = "/var/spool/nagios/ramdisk/FortiSerial";
   my $help          = 0;
 
@@ -799,7 +801,7 @@ sub parse_args {
 
   return (
     $ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
-    $blacklist, $whitelist, $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path
+    $blacklist, $whitelist, $nosync, $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path
   );
 }
 
@@ -883,6 +885,9 @@ INTEGER - Critical threshold, applies to cpu, mem, session fazcpu, fazmem, fazdi
 
 =item B<-R|--reset>
 BOOL - Resets ip file (cluster only)
+
+=item B<-n|--nosync>
+BOOL - Exclude cluster synchronisation check (cluster only)
 
 =item B<-M|--mode>
 STRING - Output-Mode: 0 => just print, 1 => print and show failed tunnel, 2 => critical
