@@ -102,14 +102,7 @@ use Socket;
 use POSIX;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.8.1";
-
-# Parse out the arguments...
-my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
-    $blacklist, $whitelist, $nosync, $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path) = parse_args();
-
-# Initialize variables....
-my $net_snmp_debug_level = 0x00; # See http://search.cpan.org/~dtown/Net-SNMP-v6.0.1/lib/Net/SNMP.pm#debug()_-_set_or_get_the_debug_mode_for_the_module
+my $script_version = "1.8.2";
 
 # for more information.
 my %status = (     # Enumeration for the output Nagios states
@@ -119,11 +112,18 @@ my %status = (     # Enumeration for the output Nagios states
   'UNKNOWN'  => '3'
 );
 
+# Parse out the arguments...
+my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
+    $blacklist, $whitelist, $nosync, $snmp_version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path) = parse_args();
+
+# Initialize variables....
+my $net_snmp_debug_level = 0x00; # See http://search.cpan.org/~dtown/Net-SNMP-v6.0.1/lib/Net/SNMP.pm#debug()_-_set_or_get_the_debug_mode_for_the_module
+
 my $session = "";
 my $error = "";
 
 ## SNMP ##
-if ( $version == 3 ) {
+if ( $snmp_version == 3 ) {
   ($session, $error) = get_snmp_session_v3(
                             $ip,
                             $user_name,
@@ -138,7 +138,7 @@ if ( $version == 3 ) {
                             $ip,
                             $community,
                             $port,
-                            $version
+                            $snmp_version
                        ); # Open SNMP connection...
 }
 
@@ -744,7 +744,7 @@ sub get_snmp_table{
 sub parse_args {
   my $ip            = "";       # snmp host
   my $port          = 161;      # snmp port
-  my $version       = "2";      # snmp version
+  my $snmp_version       = "2";      # snmp version
   my $community     = "public"; # only for v1/v2c
   my $user_name     = "public"; # v3
   my $auth_password = "";       # v3
@@ -764,13 +764,14 @@ sub parse_args {
   my $nosync        = undef;
   my $path          = "/var/spool/nagios/ramdisk/FortiSerial";
   my $help          = 0;
+  my $version       = 0;
 
   pod2usage(-message => "UNKNOWN: No Arguments given", -exitval => 3,  -sections => 'SYNOPSIS' ) if ( !@ARGV );
 
   GetOptions(
           'host|H=s'         => \$ip,
           'port|P=i'         => \$port,
-          'version|v:s'      => \$version,
+          'snmp_version|v:s'      => \$snmp_version,
           'community|C:s'    => \$community,
           'username|U:s'     => \$user_name,
           'authpassword|A:s' => \$auth_password,
@@ -789,8 +790,14 @@ sub parse_args {
           'reset|R:1'        => \$reset_file,
           'path|p:s'         => \$path,
           'help|h!'          => \$help,
+          'version!'          => \$version,
   ) or pod2usage(-exitval => 3, -sections => 'OPTIONS' );
 
+  if( $version )
+  {
+	print "$script version: $script_version. no check performed.\n";
+	exit($status{'OK'});
+  }
   pod2usage(-exitval => 3, -verbose => 3) if $help;
 
   # removing any non digits
@@ -801,7 +808,7 @@ sub parse_args {
 
   return (
     $ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
-    $blacklist, $whitelist, $nosync, $version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path
+    $blacklist, $whitelist, $nosync, $snmp_version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path
   );
 }
 
@@ -829,7 +836,8 @@ STRING or IPADDRESS - Check interface on the indicated host
 
 INTEGER - SNMP Port on the indicated host, defaults to 161
 
-=item B<-v|--version>
+=item B<-v|--snmp_version>
+
 INTEGER - SNMP Version on the indicated host, possible values 1,2,3 and defaults to 2
 
 =back
@@ -905,6 +913,10 @@ Currently only applies to IPSec tunnel names
 
 =item B<-p|--path>
 STRING - Path to store serial filenames
+
+=item B<--version>
+display script version; no check is performed.
+
 
 =back
 
