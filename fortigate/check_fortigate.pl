@@ -7,6 +7,7 @@
 # Tested on: FortiGate 100D / FortiGate 300C (5.0.3)
 # Tested on: FortiGate 200B (5.0.6), Fortigate 800C (5.2.2)
 # Tested on: FortiAnalyzer (5.2.4)
+# Tested on: FortiGate 100A (2.8)
 #
 # Author: Oliver Skibbe (oliskibbe (at) gmail.com)
 # Date: 2017-01-12
@@ -75,6 +76,8 @@
 # Release 1.8.1 (2017-06-28) Alexandre Rigaud (alexandre (at) rigaudcolonna.fr)
 # - Added checks used by devices on output when selected type is missing 
 # - Added no check cluster option
+# Release 1.8.3 (2017-11-22) Davide Foschi (argaar (at) gmail.com)
+# - Added checks for FortiGate 100A (identified as legacy device, running O.S. version 2.8)
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -102,7 +105,7 @@ use Socket;
 use POSIX;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.8.2";
+my $script_version = "1.8.3";
 
 # for more information.
 my %status = (     # Enumeration for the output Nagios states
@@ -156,6 +159,13 @@ my $oid_net              = ".1.3.6.1.4.1.12356.101.13.2.1.1.5";    # Location of
 my $oid_mem              = ".1.3.6.1.4.1.12356.101.13.2.1.1.4";    # Location of cluster member Mem (%)
 my $oid_ses              = ".1.3.6.1.4.1.12356.101.13.2.1.1.6";    # Location of cluster member Sessions (int)
 
+## Legacy OIDs ##
+my $oid_legacy_serial    = ".1.3.6.1.4.1.12356.1.2.0";             # Location of Fortinet serial number (String)
+my $oid_legacy_cpu       = ".1.3.6.1.4.1.12356.1.8.0";               # Location of cluster member CPU (%)
+my $oid_legacy_net       = ".1.3.6.1.4.1.12356.1.100.6.1.5.1";     # Location of cluster member Net (kbps)
+my $oid_legacy_mem       = ".1.3.6.1.4.1.12356.1.9.0";               # Location of cluster member Mem (%)
+my $oid_legacy_ses       = ".1.3.6.1.4.1.12356.1.10.0";              # Location of cluster member Sessions (int)
+
 ## FortiAnalyzer OIDs ##
 my $oid_faz_cpu_used     = ".1.3.6.1.4.1.12356.103.2.1.1.0";       # Location of CPU for FortiAnalyzer (%)
 my $oid_faz_mem_used     = ".1.3.6.1.4.1.12356.103.2.1.2.0";       # Location of Memory used for FortiAnalyzer (kb)
@@ -175,8 +185,8 @@ my $oid_fe_ses           = ".1.3.6.1.4.1.12356.105.1.10.0";        # Location of
 my $oid_fad_mem           = ".1.3.6.1.4.1.12356.112.1.5.0";        # Location of Memory for FortiADC (%)
 my $oid_fad_ldisk         = ".1.3.6.1.4.1.12356.112.1.6.0";        # Location of Log Disk Usage for FortiADC (%)
 my $oid_fad_load          = ".1.3.6.1.4.1.12356.112.1.30.0";       # Location of Load used for FortiADC (%)
-#  my $oid_fad_load       = ".1.3.6.1.4.1.12356.112.1.40.0";    	 # "SNMP No Such Object"
-my $oid_fad_cpu			  = ".1.3.6.1.4.1.12356.112.1.4.0";			 # Location of CPU for FortiADC (%)
+#  my $oid_fad_load       = ".1.3.6.1.4.1.12356.112.1.40.0";         # "SNMP No Such Object"
+my $oid_fad_cpu           = ".1.3.6.1.4.1.12356.112.1.4.0";        # Location of CPU for FortiADC (%)
 
 # Cluster
 my $oid_cluster_type     = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of Fortinet cluster type (String)
@@ -217,8 +227,15 @@ my $perf;                                             # performance data
 
 # Check SNMP connection and get the description of the device...
 my $curr_device = get_snmp_value($session, $oid_unitdesc);
-# Check SNMP connection and get the serial of the device...
-my $curr_serial = get_snmp_value($session, $oid_serial);
+
+my $curr_serial = '';
+
+if ( $curr_device=~/100A/) {
+    $curr_serial = get_snmp_value($session, $oid_legacy_serial);
+} else {
+    # Check SNMP connection and get the serial of the device...
+    $curr_serial = get_snmp_value($session, $oid_serial);
+}
 
 # Use s/n to determinate device
 given ( $curr_serial ) {
@@ -246,6 +263,14 @@ given ( $curr_serial ) {
          when ("ldisk") { ($return_state, $return_string) = get_health_value($oid_fad_ldisk, "Log Disk", "%"); }
          when ("load")  { ($return_state, $return_string) = get_health_value($oid_fad_load, "Load", "%"); }
          default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|ldisk|load, $curr_device is a FortiADC (S/N: $curr_serial)"); }
+      }
+   } when ( /^FG100A/ ) { # 100A = Legacy Device
+      given ( lc($type) ) {
+         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_legacy_cpu, "CPU", "%"); }
+         when ("mem") { ($return_state, $return_string) = get_health_value($oid_legacy_mem, "Memory", "%"); }
+         when ("ses") { ($return_state, $return_string) = get_health_value($oid_legacy_ses, "Session", ""); }
+         when ("net") { ($return_state, $return_string) = get_health_value($oid_legacy_net, "Network", ""); }
+         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|ses|net, $curr_device is a Legacy Fortigate (S/N: $curr_serial)"); }
       }
    } default { # OTHERS (FG = FORTIGATE...)
       given ( lc($type) ) {
@@ -342,6 +367,8 @@ sub get_health_value {
   if ( $slave == 1 ) {
       $oid = $_[0] . ".2";
       $label = "slave_" . $label;
+  } elsif ( $curr_serial =~ /^FG100A/ ) {
+      $oid = $_[0];
   } elsif ( $curr_serial =~ /^FG/ ) {
       $oid = $_[0] . ".1";
   } else {
@@ -762,7 +789,7 @@ sub parse_args {
   my $blacklist     = undef;
   my $whitelist     = undef;
   my $nosync        = undef;
-  my $path          = "/var/spool/nagios/ramdisk/FortiSerial";
+  my $path          = "/usr/local/nagios/var/spool/FortiSerial";
   my $help          = 0;
   my $version       = 0;
 
@@ -795,8 +822,8 @@ sub parse_args {
 
   if( $version )
   {
-	print "$script version: $script_version. no check performed.\n";
-	exit($status{'OK'});
+    print "$script version: $script_version. no check performed.\n";
+    exit($status{'OK'});
   }
   pod2usage(-exitval => 3, -verbose => 3) if $help;
 
@@ -979,4 +1006,3 @@ Configure for your needs, Traps are not required for this plugin!
 Thats it!
 
 =cut
-
