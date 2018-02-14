@@ -7,9 +7,10 @@
 # Tested on: FortiGate 100D / FortiGate 300C (5.0.3)
 # Tested on: FortiGate 200B (5.0.6), Fortigate 800C (5.2.2)
 # Tested on: FortiAnalyzer (5.2.4)
+# Tested on: FortiGate 100A (2.8)
 #
 # Author: Oliver Skibbe (oliskibbe (at) gmail.com)
-# Date: 2017-01-12
+# Date: 2018-02-14
 #
 # Changelog:
 # Release 1.0 (2013)
@@ -73,8 +74,13 @@
 # Release 1.8.0 (2017-01-12) Oliver Skibbe (oliskibbe (at) gmail.com)
 # - Added cpu,mem,log disk, load FortiADC checks
 # Release 1.8.1 (2017-06-28) Alexandre Rigaud (alexandre (at) rigaudcolonna.fr)
-# - Added checks used by devices on output when selected type is missing 
+# - Added checks used by devices on output when selected type is missing
 # - Added no check cluster option
+# Release 1.8.3 (2017-11-22) Davide Foschi (argaar (at) gmail.com)
+# - Added checks for FortiGate 100A (identified as legacy device, running O.S. version 2.8)
+# Release 1.8.4 (2018-02-14) Davide Foschi (argaar (at) gmail.com)
+# - Added HA/Disk/Uptime checks for Generic FortiGate (tested on Forti100D where common cluster OIDs fails)
+# - Added perfdata to WTP
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -102,7 +108,7 @@ use Socket;
 use POSIX;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.8.2";
+my $script_version = "1.8.4";
 
 # for more information.
 my %status = (     # Enumeration for the output Nagios states
@@ -113,7 +119,7 @@ my %status = (     # Enumeration for the output Nagios states
 );
 
 # Parse out the arguments...
-my ($ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
+my ($ip, $port, $community, $type, $warn, $crit, $expected, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
     $blacklist, $whitelist, $nosync, $snmp_version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path) = parse_args();
 
 # Initialize variables....
@@ -155,6 +161,18 @@ my $oid_cpu              = ".1.3.6.1.4.1.12356.101.13.2.1.1.3";    # Location of
 my $oid_net              = ".1.3.6.1.4.1.12356.101.13.2.1.1.5";    # Location of cluster member Net (kbps)
 my $oid_mem              = ".1.3.6.1.4.1.12356.101.13.2.1.1.4";    # Location of cluster member Mem (%)
 my $oid_ses              = ".1.3.6.1.4.1.12356.101.13.2.1.1.6";    # Location of cluster member Sessions (int)
+my $oid_disk_usage       = ".1.3.6.1.4.1.12356.101.4.1.6.0";       # Location of disk usage value (int - used space kb)
+my $oid_disk_cap         = ".1.3.6.1.4.1.12356.101.4.1.7.0";       # Location of disk capacity value (int - total capacity kb)
+my $oid_ha               = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of HA Mode (int - standalone(1),activeActive(2),activePassive(3) )
+my $oid_ha_sync_prefix   = ".1.3.6.1.4.1.12356.101.13.2.1.1.15";   # Location of HA Sync Checksum prefix (string - if match, nodes are synced )
+my $oid_uptime           = ".1.3.6.1.4.1.12356.101.4.1.20.0";      # Location of Uptime value (int - hundredths of a second)
+
+## Legacy OIDs ##
+my $oid_legacy_serial    = ".1.3.6.1.4.1.12356.1.2.0";             # Location of Fortinet serial number (String)
+my $oid_legacy_cpu       = ".1.3.6.1.4.1.12356.1.8.0";               # Location of cluster member CPU (%)
+my $oid_legacy_net       = ".1.3.6.1.4.1.12356.1.100.6.1.5.1";     # Location of cluster member Net (kbps)
+my $oid_legacy_mem       = ".1.3.6.1.4.1.12356.1.9.0";               # Location of cluster member Mem (%)
+my $oid_legacy_ses       = ".1.3.6.1.4.1.12356.1.10.0";              # Location of cluster member Sessions (int)
 
 ## FortiAnalyzer OIDs ##
 my $oid_faz_cpu_used     = ".1.3.6.1.4.1.12356.103.2.1.1.0";       # Location of CPU for FortiAnalyzer (%)
@@ -175,8 +193,8 @@ my $oid_fe_ses           = ".1.3.6.1.4.1.12356.105.1.10.0";        # Location of
 my $oid_fad_mem           = ".1.3.6.1.4.1.12356.112.1.5.0";        # Location of Memory for FortiADC (%)
 my $oid_fad_ldisk         = ".1.3.6.1.4.1.12356.112.1.6.0";        # Location of Log Disk Usage for FortiADC (%)
 my $oid_fad_load          = ".1.3.6.1.4.1.12356.112.1.30.0";       # Location of Load used for FortiADC (%)
-#  my $oid_fad_load       = ".1.3.6.1.4.1.12356.112.1.40.0";    	 # "SNMP No Such Object"
-my $oid_fad_cpu			  = ".1.3.6.1.4.1.12356.112.1.4.0";			 # Location of CPU for FortiADC (%)
+#  my $oid_fad_load       = ".1.3.6.1.4.1.12356.112.1.40.0";         # "SNMP No Such Object"
+my $oid_fad_cpu           = ".1.3.6.1.4.1.12356.112.1.4.0";        # Location of CPU for FortiADC (%)
 
 # Cluster
 my $oid_cluster_type     = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of Fortinet cluster type (String)
@@ -217,8 +235,15 @@ my $perf;                                             # performance data
 
 # Check SNMP connection and get the description of the device...
 my $curr_device = get_snmp_value($session, $oid_unitdesc);
-# Check SNMP connection and get the serial of the device...
-my $curr_serial = get_snmp_value($session, $oid_serial);
+
+my $curr_serial = '';
+
+if ( $curr_device=~/100A/) {
+    $curr_serial = get_snmp_value($session, $oid_legacy_serial);
+} else {
+    # Check SNMP connection and get the serial of the device...
+    $curr_serial = get_snmp_value($session, $oid_serial);
+}
 
 # Use s/n to determinate device
 given ( $curr_serial ) {
@@ -247,12 +272,24 @@ given ( $curr_serial ) {
          when ("load")  { ($return_state, $return_string) = get_health_value($oid_fad_load, "Load", "%"); }
          default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|ldisk|load, $curr_device is a FortiADC (S/N: $curr_serial)"); }
       }
+   } when ( /^FG100A/ ) { # 100A = Legacy Device
+      given ( lc($type) ) {
+         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_legacy_cpu, "CPU", "%"); }
+         when ("mem") { ($return_state, $return_string) = get_health_value($oid_legacy_mem, "Memory", "%"); }
+         when ("ses") { ($return_state, $return_string) = get_health_value($oid_legacy_ses, "Session", ""); }
+         when ("net") { ($return_state, $return_string) = get_health_value($oid_legacy_net, "Network", ""); }
+         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|ses|net, $curr_device is a Legacy Fortigate (S/N: $curr_serial)"); }
+      }
    } default { # OTHERS (FG = FORTIGATE...)
       given ( lc($type) ) {
          when ("cpu") { ($return_state, $return_string) = get_health_value($oid_cpu, "CPU", "%"); }
          when ("mem") { ($return_state, $return_string) = get_health_value($oid_mem, "Memory", "%"); }
-         when ("net") { ($return_state, $return_string) = get_health_value($oid_net, "Network", ""); }
+         when ("net") { ($return_state, $return_string) = get_health_value($oid_net, "Network", "kb"); }
          when ("ses") { ($return_state, $return_string) = get_health_value($oid_ses, "Session", ""); }
+         when ("disk") { ($return_state, $return_string) = get_disk_usage(); }
+         when ("ha") { ($return_state, $return_string) = get_ha_mode(); }
+         when ("hasync") { ($return_state, $return_string) = get_ha_sync(); }
+         when ("uptime") { ($return_state, $return_string) = get_uptime(); }
          when ("vpn") { ($return_state, $return_string) = get_vpn_state(); }
          when ("wtp") { ($return_state, $return_string) = get_wtp_state("%"); }
          when ("hw" ) { ($return_state, $return_string) = get_hw_state("%"); }
@@ -317,6 +354,79 @@ sub get_snmp_session_v3 {
   return ($session, $error);
 } # end get snmp session
 
+sub get_disk_usage {
+  my $value_usage = get_snmp_value($session, $oid_disk_usage);
+  my $value_cap = get_snmp_value($session, $oid_disk_cap);
+  my $value = (int (($value_usage/$value_cap)*100) );
+
+  if ( $value >= $crit ) {
+    $return_state = "CRITICAL";
+    $return_string = "Disk usage is critical: " . $value . "%";
+  } elsif ( $value >= $warn ) {
+    $return_state = "WARNING";
+    $return_string = "Disk usage is warning: " . $value . "%";
+  } else {
+    $return_state = "OK";
+    $return_string = "Disk usage is okay: " . $value. "%";
+  }
+
+  $return_string = $return_state . ": " . $return_string . "|'disk'=" . $value . "%;" . $warn . ";" . $crit;
+  return ($return_state, $return_string);
+}
+
+sub get_ha_mode {
+  my $ha_modes = get_snmp_value($session, $oid_ha);
+
+  my %ha_modes = (
+                        1 => "Standalone",
+                        2 => "Active/Active",
+                        3 => "Active/Passive"
+  );
+
+  if ( (int $expected) != $ha_modes) {
+    $return_state = "CRITICAL";
+    $return_string = "HA mode is NOT working as expected ( mode: " . $ha_modes{$ha_modes} . ", expected: " . $ha_modes{(int $expected)} . ")";
+  } else {
+    $return_state = "OK";
+    $return_string = "HA mode is working as expected: " . $ha_modes{$ha_modes};
+  }
+
+  $return_string = $return_state . ": " . $return_string;
+  return ($return_state, $return_string);
+}
+
+sub get_ha_sync {
+  my $value1 = get_snmp_value($session, $oid_ha_sync_prefix . ".1");
+  my $value2 = get_snmp_value($session, $oid_ha_sync_prefix . ".2");
+
+  if ( $value1 ne $value2 ) {
+    $return_state = "CRITICAL";
+    $return_string = "nodes are NOT synced - Node1 checksum: " . $value1 . " Node2 checksum: " . $value2;
+  } else {
+    $return_state = "OK";
+    $return_string = "nodes are synced, checksum: " . $value1;
+  }
+
+  $return_string = $return_state . ": " . $return_string;
+  return ($return_state, $return_string);
+}
+
+sub get_uptime {
+  my $value = (get_snmp_value($session, $oid_uptime)/100);
+
+  my ($days_val, $rem_d_value) = (int($value / 86400), $value / 86400);
+
+  my $hours_val = int(($rem_d_value-$days_val) * 24);
+
+  my $minutes_val = int (((($rem_d_value-$days_val) * 24)-int(($rem_d_value-$days_val) * 24)) * 60);
+
+  $return_state = "OK";
+  $return_string = $days_val . " day(s) " . $hours_val . " hour(s) " . $minutes_val . " minute(s)";
+
+  $return_string = $return_state . ": " . $return_string;
+  return ($return_state, $return_string);
+}
+
 sub get_firmware_state {
   my $value = get_snmp_value($session, $oid_firmware);
 
@@ -342,6 +452,8 @@ sub get_health_value {
   if ( $slave == 1 ) {
       $oid = $_[0] . ".2";
       $label = "slave_" . $label;
+  } elsif ( $curr_serial =~ /^FG100A/ ) {
+      $oid = $_[0];
   } elsif ( $curr_serial =~ /^FG/ ) {
       $oid = $_[0] . ".1";
   } else {
@@ -519,7 +631,7 @@ sub get_vpn_state {
 #    # Get just the top level tunnel data
     my %tunnels_names  = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunname)};
     my %tunnels_status = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunstatus)};
-    
+
     %tunnels_names  = map { (my $temp = $_ ) =~ s/^.*\.//; $temp => $tunnels_names{$_}  } keys %tunnels_names;
     %tunnels_status = map { (my $temp = $_ ) =~ s/^.*\.//; $temp => $tunnels_status{$_} } keys %tunnels_status;
 
@@ -627,7 +739,7 @@ sub get_wtp_state {
       $return_state = "WARNING";
     }
 
-    $return_string = "$return_state - $wtpoffline offline WiFi access point(s) over $wtpcount found : ".(sprintf("%.2f",$value))." $UOM : ".$downwtp;
+    $return_string = "$return_state - $wtpoffline offline WiFi access point(s) over $wtpcount found : ".(sprintf("%.2f",$value))." $UOM : ".$downwtp."|'APs'=".$wtpcount.";; 'Down APs'=".$wtpoffline.";; 'APs_Unavailable'=".$value.$UOM.";".$warn.";".$crit;
   } else  {
     $return_string = "No wtp configured.";
   }
@@ -756,13 +868,14 @@ sub parse_args {
   my $type          = "status";
   my $warn          = 80;
   my $crit          = 90;
+  my $expected      = "";
   my $slave         = 0;
   my $vpnmode       = "both";
   my $mode          = 2;
   my $blacklist     = undef;
   my $whitelist     = undef;
   my $nosync        = undef;
-  my $path          = "/var/spool/nagios/ramdisk/FortiSerial";
+  my $path          = "/usr/local/nagios/var/spool/FortiSerial";
   my $help          = 0;
   my $version       = 0;
 
@@ -786,6 +899,7 @@ sub parse_args {
           'whitelist|W:s'    => \$whitelist,
           'warning|w:s'      => \$warn,
           'critical|c:s'     => \$crit,
+          'expected|e:s'     => \$expected,
           'slave|s:1'        => \$slave,
           'reset|R:1'        => \$reset_file,
           'path|p:s'         => \$path,
@@ -795,8 +909,8 @@ sub parse_args {
 
   if( $version )
   {
-	print "$script version: $script_version. no check performed.\n";
-	exit($status{'OK'});
+    print "$script version: $script_version. no check performed.\n";
+    exit($status{'OK'});
   }
   pod2usage(-exitval => 3, -verbose => 3) if $help;
 
@@ -807,7 +921,7 @@ sub parse_args {
   }
 
   return (
-    $ip, $port, $community, $type, $warn, $crit, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
+    $ip, $port, $community, $type, $warn, $crit, $expected, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
     $blacklist, $whitelist, $nosync, $snmp_version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path
   );
 }
@@ -877,7 +991,7 @@ STRING - Community-String for SNMP, defaults to public only used with SNMP versi
 =over
 
 =item B<-T|--type>
-STRING - CPU, MEM, Ses, VPN, net, Cluster, wtp, hw, fazcpu, fazmem, fazdisk
+STRING - CPU, MEM, Ses, VPN, net, disk, ha, hasync, uptime, Cluster, wtp, hw, fazcpu, fazmem, fazdisk
 
 =item B<-S|--serial>
 STRING - Primary serial number.
@@ -886,10 +1000,13 @@ STRING - Primary serial number.
 BOOL - Get values of slave
 
 =item B<-w|--warning>
-INTEGER - Warning threshold, applies to cpu, mem, session, fazcpu, fazmem, fazdisk.
+INTEGER - Warning threshold, applies to cpu, mem, disk, net, session, fazcpu, fazmem, fazdisk.
 
 =item B<-c|--critical>
-INTEGER - Critical threshold, applies to cpu, mem, session fazcpu, fazmem, fazdisk.
+INTEGER - Critical threshold, applies to cpu, mem, disk, net, session fazcpu, fazmem, fazdisk.
+
+=item B<-e|--expected>
+INTEGER - Critical threshold, applies to ha.
 
 =item B<-R|--reset>
 BOOL - Resets ip file (cluster only)
