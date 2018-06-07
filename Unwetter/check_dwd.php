@@ -5,7 +5,7 @@ This plugin checks the DWD Web Output for a given Region
 
  Author: Oliver Skibbe (oliskibbe (at) gmail.com)
  Web: http://oskibbe.blogspot.com / https://github.com/riskersen
- Date: 2015-04-21
+ Date: 2018-06-07
 
  Changelog:
  Release 1.0 (2015-03-31)
@@ -20,6 +20,11 @@ This plugin checks the DWD Web Output for a given Region
 
  Release 1.5 (2015-04-24)
  - added proxy support
+ 
+ Release 1.6 (2018-06-07)
+ - follow redirects (up to 30)
+ - adjusted regex to reflect website changes
+ - added possibility to choose between BASIC and NTLM proxy authentication method
 
 */
 
@@ -48,6 +53,9 @@ if ( $argc <= 1 ) {
 $proxy_url = "";
 $proxy_user = "";
 $proxy_pass = "";
+// can be also CURLAUTH_NTLM
+$proxy_method = "CURLAUTH_BASIC";
+
 
 // curl timeout settings
 $connect_timeout = 5;
@@ -61,7 +69,7 @@ $region_name = $argv[1];
 
 $url = "http://www.dwd.de/DE/wetter/warnungen/warntabelle_node.html";
 
-$region_regex = "@.*<h2>.*{$region_name}.*</h2>(?<output>.*)</h2>.*@isUm";
+$region_regex = "@<h2 id=.*{$region_name}.*>.*<table>(?<output>.*)</table>@isUm";
 
 $crit_regex = "@.*<td>Amtliche UNWETTERWARNUNG.*(?<warnung>.*)</td><td>(?<von_datum>.*)</td><td>(?<bis_datum>.*)</td>.*@isUm";
 $warn_regex = "@.*<td>Amtliche (?<warnung>.*)</td><td>(?<von_datum>.*)</td><td>(?<bis_datum>.*)</td>.*@isUm";
@@ -85,13 +93,17 @@ curl_setopt($ch, CURLOPT_URL, $url);
 //return the transfer as a string 
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); 
 
+// follow redirect
+curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
+curl_setopt($ch, CURLOPT_MAXREDIRS , 30);
+
 // curl connect timeout
 curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $connect_timeout);
 curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
 
 // curl proxy settings
 if ( $proxy_url != "" ) { 
-	curl_setopt($ch, CURLOPT_PROXYAUTH, CURLAUTH_BASIC);
+	curl_setopt($ch, CURLOPT_PROXYAUTH, $proxy_method);
 	curl_setopt($ch, CURLOPT_PROXY, $proxy_url);    
 }
 
