@@ -6,14 +6,15 @@
 # This script shall be configured as ssh users shell
 #
 # Author: Oliver Skibbe (oliskibbe (at) gmail.com)
-# Date: 2017-01-12
+# Date: 2019-01-07
 #
 # Changelog:
 # Release 1.0 (2017-01-11)
 # - initial release
 # Release 1.1 (2017-01-12)
 # - moved to SSH_ORIGINAL_COMMAND
-#
+# Release 1.2 (2019-01-07)
+# - added file exists check
 
 use strict;
 use File::Basename;
@@ -38,6 +39,12 @@ my @ssh_command = split(" ", $ENV{SSH_ORIGINAL_COMMAND});
 $script_name = $ssh_command[0];
 if ( dirname($script_name) ne $allowed_path ) {
   print "UNKNOWN: accessed path is protected!";
+  exit(3);
+}
+
+# check if script exists
+if ( ! -e $script_name ) {
+  print "UNKNOWN: file does not exist!";
   exit(3);
 }
 
