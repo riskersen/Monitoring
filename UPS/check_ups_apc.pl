@@ -21,6 +21,8 @@
 #    along with this program; if not, write to the Free Software
 #    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA    02111-1307    USA
 #
+# 2019-01-14: Maarten Hoogveld maarten (at) hoogveld.org
+#	- Replaced usage of experimental "given" and "when" features
 # 2017-05-29: Momcilo Medic medicmomcilo (at) gmail.com
 #	- added battery temperature thresholds support
 # 2017-02-07: Oliver Skibbe oliskibbe (at) gmail.com
@@ -58,10 +60,10 @@
 #		After: CRIT - Smart-UPS RT 10000 XL - CRIT BATTERY CAPACITY 50% - STATUS NORMAL - OUTPUT LOAD 31% - TEMPERATURE 23 C
 #	- Added multiline output for firmware,manufacture date and serial number
 
-use feature ":5.10";
 use Net::SNMP;
 use Getopt::Std;
 use Getopt::Long qw(:config no_ignore_case bundling);
+use Scalar::Util qw(looks_like_number);
 
 # Do we have enough information?
 if (@ARGV < 1) {
@@ -359,8 +361,8 @@ sub main {
             return 1;
         }
     }
-     foreach ($s->var_bind_names()) {
-         $battemperature = $s->var_bind_list()->{$_};
+    foreach ($s->var_bind_names()) {
+        $battemperature = $s->var_bind_list()->{$_};
     }
 
     #######################################################
@@ -378,155 +380,144 @@ sub main {
         $status = 2;
     }
 
-    given ( $battery_capacity ) {
-      when ( $_ < $battery_capacity_crit) {
-        $returnstring = $returnstring . "CRIT BATTERY CAPACITY $battery_capacity% - ";
-        $status = 2;
-      }
-      when ( $_ < $battery_capacity_warn ) {
-        $returnstring = $returnstring . "WARN BATTERY CAPACITY $battery_capacity% - ";
-        $status = 1 if ( $status != 2 );
-      }
-      when ( $_ <= 100) {
-        $returnstring = $returnstring . "BATTERY CAPACITY $battery_capacity% - ";
-      }
-      default {
+    if (!looks_like_number($battery_capacity)) {
         $returnstring = $returnstring . "UNKNOWN BATTERY CAPACITY! - ";
         $status = 3 if ( ( $status != 2 ) && ( $status != 1 ) );
-      }
+    } elsif ( $battery_capacity < $battery_capacity_crit ) {
+        $returnstring = $returnstring . "CRIT BATTERY CAPACITY $battery_capacity% - ";
+        $status = 2;
+    } elsif ($battery_capacity < $battery_capacity_warn) {
+        $returnstring = $returnstring . "WARN BATTERY CAPACITY $battery_capacity% - ";
+        $status = 1 if ( $status != 2 );
+    } elsif ($battery_capacity <= 100) {
+        $returnstring = $returnstring . "BATTERY CAPACITY $battery_capacity% - ";
+    } else {
+        $returnstring = $returnstring . "UNKNOWN BATTERY CAPACITY! - ";
+        $status = 3 if ( ( $status != 2 ) && ( $status != 1 ) );
     }
 
-    given($output_status) {
-      when (2) { $returnstring = $returnstring . "STATUS NORMAL - "; }
-      when (3) {
-        $returnstring = $returnstring . "UPS RUNNING ON BATTERY! - ";
-        $status = 1 if ( $status != 2 );
-      }
-      when (6 || 9 ) {
-        $returnstring = $returnstring . "UPS RUNNING ON BYPASS! - ";
-        $status = 1 if ( $status != 2 );
-      }
-      when (10) {
-        $returnstring = $returnstring . "HARDWARE FAILURE UPS RUNNING ON BYPASS! - ";
-        $status = 1 if ( $status != 2 );
-      }
-      default {
+    if (!looks_like_number($output_status)) {
         $returnstring = $returnstring . "UNKNOWN OUTPUT STATUS! - ";
         $status = 3 if ( ( $status != 2 ) && ( $status != 1 ) );
-      }
+    } elsif ($output_status == 2) {
+        $returnstring = $returnstring . "STATUS NORMAL - ";
+    } elsif ($output_status == 3) {
+        $returnstring = $returnstring . "UPS RUNNING ON BATTERY! - ";
+        $status = 1 if ( $status != 2 );
+    } elsif (($output_status == 6) || ($output_status == 9)) {
+        $returnstring = $returnstring . "UPS RUNNING ON BYPASS! - ";
+        $status = 1 if ( $status != 2 );
+    } elsif ($output_status == 10) {
+        $returnstring = $returnstring . "HARDWARE FAILURE UPS RUNNING ON BYPASS! - ";
+        $status = 1 if ( $status != 2 );
+    } else {
+        $returnstring = $returnstring . "UNKNOWN OUTPUT STATUS! - ";
+        $status = 3 if ( ( $status != 2 ) && ( $status != 1 ) );
     }
 
-    
-    given ( $output_load ) {
-      when ( $_ > $output_load_crit) {
-        $returnstring = $returnstring . "CRIT OUTPUT LOAD $output_load% - ";
-        $perfdata = $perfdata . "'load'=${output_load}%;$output_load_warn;$output_load_crit;; ";
-        $status = 2;
-      }
-      when ( $_ > $output_load_warn) {
-        $returnstring = $returnstring . "WARN OUTPUT LOAD $output_load% - ";
-        $perfdata = $perfdata . "'load'=${output_load}%;$output_load_warn;$output_load_crit;; ";
-        $status = 1 if ( $status != 2 );
-      }
-      when ($_ >= 0) {
-        $returnstring = $returnstring . "OUTPUT LOAD $output_load% - ";
-        $perfdata = $perfdata . "'load'=${output_load}%;$output_load_warn;$output_load_crit;; ";
-      }
-      default {
+    if (!looks_like_number($output_load)) {
         $returnstring = $returnstring . "UNKNOWN OUTPUT LOAD! - ";
         $perfdata = $perfdata . "'load'=NAN ";
         $status = 3 if ( ( $status != 2 ) && ( $status != 1 ) );
-      }
+    } elsif ($output_load > $output_load_crit) {
+        $returnstring = $returnstring . "CRIT OUTPUT LOAD $output_load% - ";
+        $perfdata = $perfdata . "'load'=${output_load}%;$output_load_warn;$output_load_crit;; ";
+        $status = 2;
+    } elsif ($output_load > $output_load_warn) {
+        $returnstring = $returnstring . "WARN OUTPUT LOAD $output_load% - ";
+        $perfdata = $perfdata . "'load'=${output_load}%;$output_load_warn;$output_load_crit;; ";
+        $status = 1 if ( $status != 2 );
+    } elsif ($output_load >= 0) {
+        $returnstring = $returnstring . "OUTPUT LOAD $output_load% - ";
+        $perfdata = $perfdata . "'load'=${output_load}%;$output_load_warn;$output_load_crit;; ";
+    } else {
+        $returnstring = $returnstring . "UNKNOWN OUTPUT LOAD! - ";
+        $perfdata = $perfdata . "'load'=${output_load} ";
+        $status = 3 if ( ( $status != 2 ) && ( $status != 1 ) );
     }
 
     # battery temperature
-    given ( $battemperature ) {
-      when ( $_ > $battemperature_crit ) {
-        $returnstring = $returnstring . "CRIT BATT TEMP $battemperature C - ";
-        $perfdata = $perfdata . "'temp'=${battemperature};$battemperature_warn;$battemperature_crit;; ";
-        $status = 2;
-      }
-      when ( $_ > $battemperature_warn ) {
-        $returnstring = $returnstring . "WARN BATT TEMP $battemperature C - ";
-        $perfdata = $perfdata . "'temp'=${battemperature};$battemperature_warn;$battemperature_crit;; ";
-        $status = 1 if ( $status != 2 );
-      }
-      when ($_ >= 0 ) {
-        $returnstring = $returnstring . "BATT TEMP $battemperature C - ";
-        $perfdata = $perfdata . "'temp'=${battemperature};$battemperature_warn;$battemperature_crit;; ";
-      }
-      default {
+    if (!looks_like_number($battemperature) || !looks_like_number($battemperature_crit) || !looks_like_number($battemperature_warn)) {
         $returnstring = $returnstring . "UNKNOWN BATT TEMP! - ";
         $perfdata = $perfdata . "'temp'=NAN ";
         $status = 3 if ( ( $status != 2 ) && ( $status != 1 ) );
-      }
+    } elsif ($battemperature > $battemperature_crit) {
+        $returnstring = $returnstring . "CRIT BATT TEMP $battemperature C - ";
+        $perfdata = $perfdata . "'temp'=${battemperature};$battemperature_warn;$battemperature_crit;; ";
+        $status = 2;
+    } elsif ($battemperature > $battemperature_warn) {
+        $returnstring = $returnstring . "WARN BATT TEMP $battemperature C - ";
+        $perfdata = $perfdata . "'temp'=${battemperature};$battemperature_warn;$battemperature_crit;; ";
+        $status = 1 if ( $status != 2 );
+    } elsif ($output_load >= 0) {
+        $returnstring = $returnstring . "BATT TEMP $battemperature C - ";
+        $perfdata = $perfdata . "'temp'=${battemperature};$battemperature_warn;$battemperature_crit;; ";
+    } else {
+        $returnstring = $returnstring . "UNKNOWN BATT TEMP! - ";
+        $perfdata = $perfdata . "'temp'=${battemperature} ";
+        $status = 3 if ( ( $status != 2 ) && ( $status != 1 ) );
     }
 
     # external temperature
     if ( defined ( $exttemperature ) && $exttemperature !~ /noSuchInstance/ ) {
-       given ( $exttemperature ) {
-          when ( $_ > $exttemperature_crit) {
-            $returnstring = $returnstring . "CRIT EXT TEMP $exttemperature C - ";
-            $perfdata = $perfdata . "'exttemp'=${exttemperature};$exttemperature_warn;$exttemperature_crit;; ";
-            $status = 2;
-          }
-          when ( $_ > $exttemperature_warn ) {
-            $returnstring = $returnstring . "WARN EXT TEMP $exttemperature C - ";
-            $perfdata = $perfdata . "'exttemp'=${exttemperature};$exttemperature_warn;$exttemperature_crit;; ";
-            $status = 1 if ( $status != 2 );
-          }
-          when ( $_ >= 0 ) {
-            $returnstring = $returnstring . "EXT TEMP $exttemperature C - ";
-            $perfdata = $perfdata . "'exttemp'=${exttemperature};$exttemperature_warn;$exttemperature_crit;; ";
-          }
-          default {
+        if (!looks_like_number($exttemperature)) {
             $returnstring = $returnstring . "UNKNOWN EXT TEMP! - ";
             $perfdata = $perfdata . "'exttemp'=NAN ";
             $status = 3 if ( ( $status != 2 ) && ( $status != 1 ) );
-          }
-       }
+        } elsif ($exttemperature > $exttemperature_crit) {
+            $returnstring = $returnstring . "CRIT EXT TEMP $exttemperature C - ";
+            $perfdata = $perfdata . "'exttemp'=${exttemperature};$exttemperature_warn;$exttemperature_crit;; ";
+            $status = 2;
+        } elsif ($exttemperature > $exttemperature_warn) {
+            $returnstring = $returnstring . "WARN EXT TEMP $exttemperature C - ";
+            $perfdata = $perfdata . "'exttemp'=${exttemperature};$exttemperature_warn;$exttemperature_crit;; ";
+            $status = 1 if ( $status != 2 );
+        } elsif ($exttemperature >= 0) {
+            $returnstring = $returnstring . "EXT TEMP $exttemperature C - ";
+            $perfdata = $perfdata . "'exttemp'=${exttemperature};$exttemperature_warn;$exttemperature_crit;; ";
+        } else {
+            $returnstring = $returnstring . "UNKNOWN EXT TEMP! - ";
+            $perfdata = $perfdata . "'exttemp'=${exttemperature} ";
+            $status = 3 if ( ( $status != 2 ) && ( $status != 1 ) );
+        }
     }
 
     # remaining time
     if ( defined ( $remaining_time ) ) {
-	# convert time to minutes
-	my @a = split(/ /,$remaining_time);
-	my $timeUnit = @a[1];
-	my $minutes = 0;
+        # convert time to minutes
+        my @a = split(/ /,$remaining_time);
+        my $timeUnit = @a[1];
+        my $minutes = 0;
 
-	if ( $timeUnit =~ /hour/ ) {
-		# hours returned
-		my @minutesArray = split(/:/,@a[2]);
-		$minutes = @a[0] * 60;
-		$minutes = $minutes + @minutesArray[0];
-	} elsif ( $timeUnit =~ /minute/ ) {
-		# minutes returned
-		$minutes = @a[0];
-	} else {
-		# seconds returned?
-		$minutes = 0;
-	}
-
-        given ( $minutes ) {
-	  when( $_ <= $remaining_time_crit ) {
-		$returnstring = $returnstring . "CRIT $minutes MINUTES REMAINING";
-	       	$status = 2;
-	  } 
-          when ( $_ <= $remaining_time_warn ) {
-		$returnstring = $returnstring . "WARN $minutes MINUTES REMAINING";
-	       	$status = 1;
-	  } 
-          default {
-		$returnstring = $returnstring . "$minutes MINUTES REMAINING";
-	  }
+        if ( $timeUnit =~ /hour/ ) {
+            # hours returned
+            my @minutesArray = split(/:/,@a[2]);
+            $minutes = @a[0] * 60;
+            $minutes = $minutes + @minutesArray[0];
+        } elsif ( $timeUnit =~ /minute/ ) {
+            # minutes returned
+            $minutes = @a[0];
+        } else {
+            # seconds returned?
+            $minutes = 0;
         }
-	$perfdata = $perfdata . "'remaining_sec'=" . $minutes*60 . "s;" . $remaining_time_warn*60 . ";" . $remaining_time_crit*60 . ";0; ";
+
+        if ($minutes <= $remaining_time_crit) {
+            $returnstring = $returnstring . "CRIT $minutes MINUTES REMAINING";
+            $status = 2;
+        } elsif ($minutes <= $remaining_time_warn) {
+            $returnstring = $returnstring . "WARN $minutes MINUTES REMAINING";
+            $status = 1;
+        } else {
+            $returnstring = $returnstring . "$minutes MINUTES REMAINING";
+        }        
+        $perfdata = $perfdata . "'remaining_sec'=" . $minutes*60 . "s;" . $remaining_time_warn*60 . ";" . $remaining_time_crit*60 . ";0; ";
     }
 
     # load in watthour
-    if ( defined ($output_current_load_wh) ) {	
-	    	$perfdata = $perfdata . "'loadwh'=${output_current_load_wh}Wh;;;; ";
-   		$returnstring = $returnstring . " - CURRENT LOAD $output_current_load_wh Wh";
+    if ( defined ($output_current_load_wh) ) {
+        $perfdata = $perfdata . "'loadwh'=${output_current_load_wh}Wh;;;; ";
+        $returnstring = $returnstring . " - CURRENT LOAD $output_current_load_wh Wh";
     }
 
     $returnstring = $returnstring . "\nFIRMWARE: $firmware - MANUFACTURE DATE: $manufacture_date - SERIAL: $serial_number";
@@ -612,6 +603,15 @@ sub parse_args
 		'privprotocol|x:s' 	=> \$priv_prot,
 		'help|h|?!'		=> \$help,
 	) or usage();
+
+    if (!looks_like_number($battemperature_crit)) {
+        print("Invalid value for critical battery temp.\n");
+        usage();
+    }
+    if (!looks_like_number($battemperature_warn)) {
+        print("Invalid value for warning battery temp.\n");
+        usage();
+    }
 
 	usage() if $help;
 
