@@ -8,9 +8,10 @@
 # Tested on: FortiGate 200B (5.0.6), Fortigate 800C (5.2.2)
 # Tested on: FortiAnalyzer (5.2.4)
 # Tested on: FortiGate 100A (2.8)
+# Tested on: FortiGate 800D (6.2.3)
 #
-# Author: Oliver Skibbe (oliskibbe (at) gmail.com)
-# Date: 2018-02-14
+# Author: Boris PASCAULT (github (at) ituz.fr)
+# Date: 2020-03-25
 #
 # Changelog:
 # Release 1.0 (2013)
@@ -81,6 +82,8 @@
 # Release 1.8.4 (2018-02-14) Davide Foschi (argaar (at) gmail.com)
 # - Added HA/Disk/Uptime checks for Generic FortiGate (tested on Forti100D where common cluster OIDs fails)
 # - Added perfdata to WTP
+# Release 1.8.5 (2020-03-25) Boris PASCAULT (github (at) ituz.fr)
+# - Change regex for IPSec VPN monitoring (tested on Forti800D running FortiOS 6.2.3)
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -108,7 +111,7 @@ use Socket;
 use POSIX;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.8.4";
+my $script_version = "1.8.5";
 
 # for more information.
 my %status = (     # Enumeration for the output Nagios states
@@ -632,8 +635,8 @@ sub get_vpn_state {
     my %tunnels_names  = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunname)};
     my %tunnels_status = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunstatus)};
 
-    %tunnels_names  = map { (my $temp = $_ ) =~ s/^.*\.//; $temp => $tunnels_names{$_}  } keys %tunnels_names;
-    %tunnels_status = map { (my $temp = $_ ) =~ s/^.*\.//; $temp => $tunnels_status{$_} } keys %tunnels_status;
+    %tunnels_names  = map { (my $temp = $_ ) =~ s/^${oid_ipsectuntableroot}${oidf_tunname}\.//; $temp => $tunnels_names{$_}  } keys %tunnels_names;
+    %tunnels_status = map { (my $temp = $_ ) =~ s/^${oid_ipsectuntableroot}${oidf_tunstatus}\.//; $temp => $tunnels_status{$_} } keys %tunnels_status;
 
     if (defined($whitelist) and length($whitelist))
     {
