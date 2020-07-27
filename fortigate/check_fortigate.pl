@@ -864,6 +864,7 @@ sub parse_args {
   my $priv_password = "";       # v3
   my $priv_prot     = "aes";    # v3 priv algo
   my $pri_serial    = "";       # primary fortinet serial no
+  my $credentials_file = "";    # file with credentials
   my $reset_file    = "";
   my $type          = "status";
   my $warn          = 80;
@@ -891,6 +892,7 @@ sub parse_args {
           'authprotocol|a:s' => \$auth_prot,
           'privpassword|X:s' => \$priv_password,
           'privprotocol|x:s' => \$priv_prot,
+          'credentials_file|F:s' => \$credentials_file,
           'type|T=s'         => \$type,
           'serial|S:s'       => \$pri_serial,
           'vpnmode|V:s'      => \$vpnmode,
@@ -920,6 +922,33 @@ sub parse_args {
     $crit =~ s/\D*(\d+)\D*/$1/g;
   }
 
+  # read credentials from file, if specified
+  if ($credentials_file ne '') {
+    if( ! -e $credentials_file ) {
+      print "Credentials file parameter specified, but file does not exist!\n";
+      exit(1);
+    }
+
+    # open credentials file
+    if (!open(CFD, '<'.$credentials_file)) {
+      print "Could not open credentials file: $!\n";
+      exit(1);
+    }
+
+    # read credentials file and overwrite parameters
+    while (my $cfd_line = <CFD>) {
+      chomp($cfd_line);
+      if($cfd_line =~ /^authpassword:(.+)$/) {
+        $auth_password = $1;
+      } elsif($cfd_line =~ /^privpassword:(.+)$/) {
+        $priv_password = $1;
+      } elsif($cfd_line =~ /^community:(.+)$/) {
+        $community = $1;
+      } # else - skip
+    }
+    close(CFD);
+  }
+
   return (
     $ip, $port, $community, $type, $warn, $crit, $expected, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
     $blacklist, $whitelist, $nosync, $snmp_version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path
@@ -934,7 +963,7 @@ Check Fortinet FortiGate Appliances
 
 =over 1
 
-=item B<check_fortigate.pl -H -C -T [-w|-c|-S|-s|-R|-M|-V|-U|-A|-a|-X|-x|-h|-?]>
+=item B<check_fortigate.pl -H -C -T [-w|-c|-S|-s|-R|-M|-V|-U|-A|-a|-X|-x|-h|-F|-?]>
 
 =back
 
@@ -985,6 +1014,20 @@ STRING - private algorithm, defaults to aes
 STRING - Community-String for SNMP, defaults to public only used with SNMP version 1 and 2
 
 =back
+
+=head2 SNMP v1/v2c/3 - common
+
+=over 1
+
+=item B<-F|--credentials_file>
+STRING - File containting credentials (privpassword/authpassword/community)
+as an alternative to --authpassword/--privpassword/--community
+
+=back
+
+    Sample file contents:
+    authpassword:auth password here
+    privpassword:priv password here
 
 =head2 Other
 
