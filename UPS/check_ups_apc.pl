@@ -21,6 +21,8 @@
 #    along with this program; if not, write to the Free Software
 #    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA    02111-1307    USA
 #
+# 2019-01-14: Maarten Hoogveld maarten (at) hoogveld.org
+#	- fixed default battery temp warning threshold
 # 2017-05-29: Momcilo Medic medicmomcilo (at) gmail.com
 #	- added battery temperature thresholds support
 # 2017-02-07: Oliver Skibbe oliskibbe (at) gmail.com
@@ -584,7 +586,7 @@ sub parse_args
 	my $ip = "";
 	my $version = "2";
 	my $community = "public";	# v1/v2c
-	my $battemperature_crit = "31";
+	my $battemperature_warn = "31";
 	my $battemperature_crit = "33";
 	
 	my $user_name = "public"; 	# v3
@@ -639,6 +641,7 @@ Options:
    SNMPv1/2
          -C     Community (default is public)
    SNMPv3
+         -U     Username
          -A     Authentication password
          -a     Authentication protocl
          -X     Private password
