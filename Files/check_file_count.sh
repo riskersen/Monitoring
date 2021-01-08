@@ -71,6 +71,8 @@ mountedpath=""
 warning=""
 critical=""
 maxfileage=0
+grepOpt=""
+filelist=""
 
 while getopts ":m:p:w:c:d:f:e:a:" opt; do
 	case $opt in
