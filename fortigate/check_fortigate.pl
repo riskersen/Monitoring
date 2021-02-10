@@ -269,9 +269,9 @@ given ( $curr_serial ) {
       }
    } when ( /^FMG/ ) { # FMG = FortiManager
       given ( lc($type) ) {
-         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_faz_cpu_used, "CPU", "%"); }
-         when ("mem") { ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%"); }
-         when ("disk") { ($return_state, $return_string) = get_faz_health_value($oid_faz_disk_used, $oid_faz_disk_avail, "Disk", "%"); }
+         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_fmg_cpu_used, "CPU", "%"); }
+         when ("mem") { ($return_state, $return_string) = get_fmg_health_value($oid_fmg_mem_used, $oid_fmg_mem_avail, "Memory", "%"); }
+         when ("disk") { ($return_state, $return_string) = get_fmg_health_value($oid_fmg_disk_used, $oid_fmg_disk_avail, "Disk", "%"); }
          default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|disk, $curr_device is a FORTIANALYZER (S/N: $curr_serial)"); }
       }
    } when ( /^FE/ ) { # FE = FORTIMAIL
