@@ -7,11 +7,12 @@
 # Tested on: FortiGate 100D / FortiGate 300C (5.0.3)
 # Tested on: FortiGate 200B (5.0.6), Fortigate 800C (5.2.2)
 # Tested on: FortiAnalyzer (5.2.4)
+# Tested on: FortiManager (6.4.4)
 # Tested on: FortiGate 100A (2.8)
 # Tested on: FortiGate 800D (6.2.3)
 #
-# Author: Boris PASCAULT (github (at) ituz.fr)
-# Date: 2020-03-25
+# Author: Sebastian Gruber (github (at) sebastiangruber.de)
+# Date: 2021-02-10
 #
 # Changelog:
 # Release 1.0 (2013)
