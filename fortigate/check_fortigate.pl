@@ -84,6 +84,8 @@
 # - Added perfdata to WTP
 # Release 1.8.5 (2020-03-25) Boris PASCAULT (github (at) ituz.fr)
 # - Change regex for IPSec VPN monitoring (tested on Forti800D running FortiOS 6.2.3)
+# Release 1.8.6 (2021-02-10) Sebastian Gruber  (github (at) sebastiangruber.de)
+# - added FortiManager Checks (cpu, mem, disk)
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -192,6 +194,13 @@ my $oid_fe_mdisk         = ".1.3.6.1.4.1.12356.105.1.9.0";         # Location of
 my $oid_fe_load          = ".1.3.6.1.4.1.12356.105.1.30.0";        # Location of Load used for FortiMail (%)
 my $oid_fe_ses           = ".1.3.6.1.4.1.12356.105.1.10.0";        # Location of cluster member Sessions for FortiMail (int)
 
+## FortiManager OIDS ###
+my $oid_fmg_cpu_used     = ".1.3.6.1.4.1.12356.103.2.1.1.0";       # Location of CPU for FortiManager (%)
+my $oid_fmg_mem_used     = ".1.3.6.1.4.1.12356.103.2.1.2.0";       # Location of Memory used for FortiManager (kb)
+my $oid_fmg_mem_avail    = ".1.3.6.1.4.1.12356.103.2.1.3.0";       # Location of Memory available for FortiManager (kb)
+my $oid_fmg_disk_used    = ".1.3.6.1.4.1.12356.103.2.1.4.0";       # Location of Disk used for FortiManager (Mb)
+my $oid_fmg_disk_avail   = ".1.3.6.1.4.1.12356.103.2.1.5.0";       # Location of Disk available for FortiManager (Mb)
+
 ## FortiADC OIDs ##
 my $oid_fad_mem           = ".1.3.6.1.4.1.12356.112.1.5.0";        # Location of Memory for FortiADC (%)
 my $oid_fad_ldisk         = ".1.3.6.1.4.1.12356.112.1.6.0";        # Location of Log Disk Usage for FortiADC (%)
@@ -251,6 +260,13 @@ if ( $curr_device=~/100A/) {
 # Use s/n to determinate device
 given ( $curr_serial ) {
    when ( /^(FL|FAZ)/ ) { # FL|FAZ = FORTIANALYZER
+      given ( lc($type) ) {
+         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_faz_cpu_used, "CPU", "%"); }
+         when ("mem") { ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%"); }
+         when ("disk") { ($return_state, $return_string) = get_faz_health_value($oid_faz_disk_used, $oid_faz_disk_avail, "Disk", "%"); }
+         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|disk, $curr_device is a FORTIANALYZER (S/N: $curr_serial)"); }
+      }
+   } when ( /^FMG/ ) { # FMG = FortiManager
       given ( lc($type) ) {
          when ("cpu") { ($return_state, $return_string) = get_health_value($oid_faz_cpu_used, "CPU", "%"); }
          when ("mem") { ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%"); }
@@ -516,6 +532,37 @@ sub get_faz_health_value {
 
   return ($return_state, $return_string);
 } # end faz health value
+sub get_fmg_health_value {
+  my $used_oid = $_[0];
+  my $avail_oid = $_[1];
+  my $label = $_[2];
+  my $UOM   = $_[3];
+
+  my $used_value = get_snmp_value($session, $used_oid);
+  my $avail_value = get_snmp_value($session, $avail_oid);
+
+  # strip any leading or trailing non zeros
+  $used_value =~ s/\D*(\d+)\D*/$1/g;
+  $avail_value =~ s/\D*(\d+)\D*/$1/g;
+
+  $value = floor($used_value/$avail_value*100);
+
+ if ( $value >= $crit ) {
+    $return_state = "CRITICAL";
+    $return_string = $label . " is critical: " . $value . $UOM;
+  } elsif ( $value >= $warn ) {
+    $return_state = "WARNING";
+    $return_string = $label . " is warning: " . $value . $UOM;
+  } else {
+    $return_state = "OK";
+    $return_string = $label . " is okay: " . $value. $UOM;
+  }
+
+  $perf = "|'" . lc($label) . "'=" . $value . $UOM . ";" . $warn . ";" . $crit;
+  $return_string = $return_state . ": " . $curr_device . " (Current device: " . $curr_serial .") " . $return_string . $perf;
+
+  return ($return_state, $return_string);
+} # end fmg health value
 
 sub get_cluster_state {
   my @help_serials; # helper array
@@ -1037,7 +1084,7 @@ as an alternative to --authpassword/--privpassword/--community
 =over
 
 =item B<-T|--type>
-STRING - CPU, MEM, Ses, VPN, net, disk, ha, hasync, uptime, Cluster, wtp, hw, fazcpu, fazmem, fazdisk
+STRING - CPU, MEM, Ses, VPN, net, disk, ha, hasync, uptime, Cluster, wtp, hw
 
 =item B<-S|--serial>
 STRING - Primary serial number.
@@ -1046,10 +1093,10 @@ STRING - Primary serial number.
 BOOL - Get values of slave
 
 =item B<-w|--warning>
-INTEGER - Warning threshold, applies to cpu, mem, disk, net, session, fazcpu, fazmem, fazdisk.
+INTEGER - Warning threshold, applies to cpu, mem, disk, net, session.
 
 =item B<-c|--critical>
-INTEGER - Critical threshold, applies to cpu, mem, disk, net, session fazcpu, fazmem, fazdisk.
+INTEGER - Critical threshold, applies to cpu, mem, disk, net, session.
 
 =item B<-e|--expected>
 INTEGER - Critical threshold, applies to ha.
