@@ -3,9 +3,9 @@
 /* 
 This plugin checks the DWD Web Output for a given Region 
 
- Author: Oliver Skibbe (oliskibbe (at) gmail.com)
- Web: http://oskibbe.blogspot.com / https://github.com/riskersen
- Date: 2018-06-07
+ Author:
+ -  Sebastian Gruber | @sgruber94 | 2021
+ -  Oliver Skibbe | @riskersen | 2018
 
  Changelog:
  Release 1.0 (2015-03-31)
@@ -26,6 +26,9 @@ This plugin checks the DWD Web Output for a given Region
  - adjusted regex to reflect website changes
  - added possibility to choose between BASIC and NTLM proxy authentication method
 
+ Release 1.7 (2021-01-09)
+ - replaced argv argument with getop ( for passing URL and region)
+
 */
 
 function stripos_array( $needle, $haystack ) {
@@ -44,11 +47,6 @@ function stripos_array( $needle, $haystack ) {
 	return false;
 }
 
-if ( $argc <= 1 ) {
-	help();
-}
-
-
 // Proxy Settings 
 $proxy_url = "";
 $proxy_user = "";
@@ -56,18 +54,24 @@ $proxy_pass = "";
 // can be also CURLAUTH_NTLM
 $proxy_method = "CURLAUTH_BASIC";
 
-
 // curl timeout settings
-$connect_timeout = 5;
+$connect_timeout = 15;
 $timeout = 15;
-
 
 // warnings which should be ignored
 $ignore_warnung = Array( "WINDBÖEN", "NEBEL");
 
-$region_name = $argv[1];
+// $region_name = $argv[1];
+$arguments = getopt("r:u:s:h::");
 
-$url = "http://www.dwd.de/DE/wetter/warnungen/warntabelle_node.html";
+if(isset($arguments["h"])) {
+	help();
+	exit(3);
+	}
+
+$url = $arguments["u"];
+$region_name = $arguments["r"];
+$show_url = $arguments["s"];
 
 $region_regex = "@<h2 id=.*{$region_name}.*>.*<table>(?<output>.*)</table>@isUm";
 
@@ -75,7 +79,6 @@ $crit_regex = "@.*<td>Amtliche UNWETTERWARNUNG.*(?<warnung>.*)</td><td>(?<von_da
 $warn_regex = "@.*<td>Amtliche (?<warnung>.*)</td><td>(?<von_datum>.*)</td><td>(?<bis_datum>.*)</td>.*@isUm";
 
 $ok_string = "Es sind keine Warnungen";
-
 
 $nagios_return = Array( 
 			0 => "OK",
@@ -161,7 +164,11 @@ if ( $curl_errno != 0 || curl_error($ch) ) {
 		} 
 	} else {
 		$out_state = 0;
-		$output = "keine Warnungen für " . $region_name .  " auf " . $url . " gefunden";
+		if($show_url > 0){
+			$output = "keine Warnungen für " . $region_name . " auf " . $url . " gefunden";
+		}else{
+			$output = "keine Warnungen für " . $region_name ." " ; //" auf " . $url . " gefunden";
+		}
 	}
 	
 	$perf = sprintf("'aktive_warnungen'=%s", ( array_key_exists('warnung_count', $matches) && $matches['warnung_count'] !== '' ) ? $matches['warnung_count'] : 0 );
@@ -170,17 +177,20 @@ if ( $curl_errno != 0 || curl_error($ch) ) {
 // close curl resource to free up system resources 
 curl_close($ch);
 
-echo $nagios_return[$out_state] . ": " . $output . PHP_EOL . "URL: " . $url . "|" . $perf;
+if($show_url > 0){
+	echo $nagios_return[$out_state] . ": " . $output . PHP_EOL . "URL: " . $url . "|" . $perf;
+}else{
+	echo $nagios_return[$out_state] . ": " . $output . PHP_EOL . $perf;
+}
 exit($out_state);
 
 function help() {
-	global $argv;
 
-        echo basename($argv[0]) . " region_name
-\targ1\tRegion name e.g. Hannover
-";
-
-        exit(3);
+        echo "-r region , e.g. Mainz \n";
+        echo "-s show or hide url | 0 hide  \n";
+		echo "-u specify DWD URL \n";
+		echo "-h help \n";
+	    exit(3);
 }
 
 // EOF
