@@ -3,6 +3,8 @@
 /* 
 This plugin checks the DWD Web Output for a given Region 
 
+DWD OverviewURL WetterWarntabellen: https://www.dwd.de/DE/wetter/warnungen_gemeinden/warntabellen/warntabellen_node.htm
+
  Author:
  -  Sebastian Gruber | @sgruber94 | 2021
  -  Oliver Skibbe | @riskersen | 2018
@@ -180,7 +182,7 @@ curl_close($ch);
 if($show_url > 0){
 	echo $nagios_return[$out_state] . ": " . $output . PHP_EOL . "URL: " . $url . "|" . $perf;
 }else{
-	echo $nagios_return[$out_state] . ": " . $output . PHP_EOL . $perf;
+	echo $nagios_return[$out_state] . ": " . $output . PHP_EOL . "|" . $perf;
 }
 exit($out_state);
 
@@ -188,8 +190,8 @@ function help() {
 
         echo "-r region , e.g. Mainz \n";
         echo "-s show or hide url | 0 hide  \n";
-		echo "-u specify DWD URL \n";
-		echo "-h help \n";
+	echo "-u specify DWD URL \n";
+	echo "-h help \n";
 	    exit(3);
 }
 
