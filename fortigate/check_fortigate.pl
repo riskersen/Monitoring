@@ -211,8 +211,8 @@ my $oid_cluster_sync_state = ".1.3.6.1.4.1.12356.101.13.2.1.1.12"; # Location of
 
 # VPN OIDs
 # XXX to be checked
-my $oid_ActiveSSL         = ".1.3.6.1.4.1.12356.101.12.2.3.1.2.1"; # Location of Fortinet firewall SSL VPN Tunnel connection count
-my $oid_ActiveSSLTunnel   = ".1.3.6.1.4.1.12356.101.12.2.3.1.6.1"; # Location of Fortinet firewall SSL VPN Tunnel connection count
+my $oid_ActiveSSL         = ".1.3.6.1.4.1.12356.101.12.2.3.1.2"; # Location of Fortinet firewall SSL VPN Tunnel connection count
+my $oid_ActiveSSLTunnel   = ".1.3.6.1.4.1.12356.101.12.2.3.1.6"; # Location of Fortinet firewall SSL VPN Tunnel connection count
 my $oid_ipsectuntableroot = ".1.3.6.1.4.1.12356.101.12.2.2.1";     # Table of IPSec VPN tunnels
 my $oidf_tunstatus        = ".20";                                 # Location of a tunnel's connection status
 my $oidf_tunndx           = ".1";                                  # Location of a tunnel's index...
@@ -637,8 +637,14 @@ sub get_vpn_state {
 
   # Unless specifically requesting IPSec checks only, do an SSL connection check
   if ($vpnmode ne "ipsec"){
-    $ActiveSSL = get_snmp_value($session, $oid_ActiveSSL);
-    $ActiveSSLTunnel = get_snmp_value($session, $oid_ActiveSSLTunnel);
+    my %ActiveSSL_table = %{get_snmp_table($session, $oid_ActiveSSL)};
+	  my %ActiveSSLTunnel_table = %{get_snmp_table($session, $oid_ActiveSSLTunnel)};
+    foreach my $k (keys(%ActiveSSL_table)) {
+      $ActiveSSL += $ActiveSSL_table{$k};
+    }	  
+    foreach my $k (keys(%ActiveSSLTunnel_table)) {
+      $ActiveSSLTunnel += $ActiveSSLTunnel_table{$k};
+    }	  
   }
   # Unless specifically requesting SSL checks only, do an IPSec tunnel check
   if ($vpnmode ne "ssl") {
