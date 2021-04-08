@@ -9,6 +9,9 @@
 # Tested on: FortiAnalyzer (5.2.4)
 # Tested on: FortiGate 100A (2.8)
 # Tested on: FortiGate 800D (6.2.3)
+# Tested on: FortiGate 900D (6.4.5)
+# Tested on: FortiGate 60F (6.4.5)
+# Tested on: FortiGate 60E (6.4.5)
 #
 # Author: Boris PASCAULT (github (at) ituz.fr)
 # Date: 2020-03-25
@@ -84,6 +87,8 @@
 # - Added perfdata to WTP
 # Release 1.8.5 (2020-03-25) Boris PASCAULT (github (at) ituz.fr)
 # - Change regex for IPSec VPN monitoring (tested on Forti800D running FortiOS 6.2.3)
+# Release 1.8.6 (2021-04-06) Dariusz Zielinski-Kolasinski
+# - Add SD-WAN Health Check monitoring (tested on Forti900D running FortiOS 6.4.5, Forti60F 6.4.5)
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -111,7 +116,7 @@ use Socket;
 use POSIX;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.8.5";
+my $script_version = "1.8.6";
 
 # for more information.
 my %status = (     # Enumeration for the output Nagios states
@@ -228,6 +233,12 @@ my $oid_hwsensorname     = ".1.3.6.1.4.1.12356.101.4.3.2.1.2";     # Hardware Se
 my $oid_hwsensorvalue    = ".1.3.6.1.4.1.12356.101.4.3.2.1.3";     # Hardware Sensor Value
 my $oid_hwsensoralarm    = ".1.3.6.1.4.1.12356.101.4.3.2.1.4";     # Hardware Sensor Alarm (not all sensors have alarms!)
 
+# SD-WAN
+my $oid_sdwan_healthcheck_count       = ".1.3.6.1.4.1.12356.101.4.9.1.0";    # SDWAN HealthCheck count
+my $oid_sdwan_healthcheck_state_table = ".1.3.6.1.4.1.12356.101.4.9.2.1.4";  # SDWAN HealthCheck state table
+my $oid_sdwan_healthcheck_name_table  = ".1.3.6.1.4.1.12356.101.4.9.2.1.2";  # SDWAN HealthCheck name table
+my $oid_sdwan_healthcheck_iname_table = ".1.3.6.1.4.1.12356.101.4.9.2.1.14"; # SDWAN HealthCheck interface name table
+
 ## Stuff ##
 my $return_state;                                     # return state
 my $return_string;                                    # return string
@@ -297,6 +308,7 @@ given ( $curr_serial ) {
          when ("wtp") { ($return_state, $return_string) = get_wtp_state("%"); }
          when ("hw" ) { ($return_state, $return_string) = get_hw_state("%"); }
          when ("firmware") { ($return_state, $return_string) = get_firmware_state(); }
+         when ("sdwan-hc") { ($return_state, $return_string) = get_sdwan_hc(); }
          default { ($return_state, $return_string) = get_cluster_state(); }
       }
    }
@@ -801,6 +813,45 @@ sub get_hw_state{
    return ($return_state, $return_string);
 } # end hw state
 
+
+# Get SD-WAN Health Check list and check its status (Alive/Dead)
+sub get_sdwan_hc {
+   my $k;
+   my $sdwan_hc_cnt = get_snmp_value($session, $oid_sdwan_healthcheck_count);
+   if ( $sdwan_hc_cnt > 0 ) {
+      my %sdwan_hc_name_table = %{get_snmp_table($session, $oid_sdwan_healthcheck_name_table)};
+      my %sdwan_hc_iname_table = %{get_snmp_table($session, $oid_sdwan_healthcheck_iname_table)};
+      my %sdwan_hc_state_table = %{get_snmp_table($session, $oid_sdwan_healthcheck_state_table)};
+
+      my @sdwan_hc_failed;
+
+      $return_state = "OK";
+      $return_string = "All SDWAN healt checks are in appropriate state";
+
+      $k = 1;
+      while ($k <= $sdwan_hc_cnt) {
+         my $sdwan_hc_name = $sdwan_hc_name_table{$oid_sdwan_healthcheck_name_table.'.'.$k};
+         my $sdwan_hc_iname = $sdwan_hc_iname_table{$oid_sdwan_healthcheck_iname_table.'.'.$k};
+         my $sdwan_hc_state = $sdwan_hc_state_table{$oid_sdwan_healthcheck_state_table.'.'.$k};
+         if ($sdwan_hc_state eq '1') {
+            push (@sdwan_hc_failed, ($sdwan_hc_name.'/'.$sdwan_hc_iname));
+         }
+         $k++;
+      }
+
+      if ($#sdwan_hc_failed > 0) {
+         $return_string = 'SDWAN HC Failed: '.join(';', @sdwan_hc_failed);
+         $return_state = 'CRITICAL';
+      }
+
+   } else {
+      $return_string = "UNKNOWN: device has no SDWAN healt checks available";
+      $return_state = "UNKNOWN";
+   }
+
+   return ($return_state, $return_string);
+} # end sdwan_hc
+
 sub close_snmp_session{
   my $session = $_[0];
 
@@ -854,7 +905,6 @@ sub get_snmp_table{
   }
   return $sess_get_table;
 } # end get snmp table
-
 
 sub parse_args {
   my $ip            = "";       # snmp host
@@ -1037,7 +1087,7 @@ as an alternative to --authpassword/--privpassword/--community
 =over
 
 =item B<-T|--type>
-STRING - CPU, MEM, Ses, VPN, net, disk, ha, hasync, uptime, Cluster, wtp, hw, fazcpu, fazmem, fazdisk
+STRING - CPU, MEM, Ses, VPN, net, disk, ha, hasync, uptime, Cluster, wtp, hw, fazcpu, fazmem, fazdisk, sdwan-hc
 
 =item B<-S|--serial>
 STRING - Primary serial number.
