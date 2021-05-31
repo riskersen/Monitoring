@@ -90,7 +90,7 @@
 # - Change regex for IPSec VPN monitoring (tested on Forti800D running FortiOS 6.2.3)
 # Release 1.8.6 (2021-04-06) Dariusz Zielinski-Kolasinski
 # - Add SD-WAN Health Check monitoring (tested on Forti900D running FortiOS 6.4.5, Forti60F 6.4.5)
-# Release 1.8.7 (2021-02-10) Sebastian Gruber  (github (at) sebastiangruber.de)
+# Release 1.8.7 (2021-05-31) Sebastian Gruber  (github (at) sebastiangruber.de)
 # - added FortiManager Checks (cpu, mem, disk)
 #
 # This program is free software; you can redistribute it and/or
@@ -119,7 +119,7 @@ use Socket;
 use POSIX;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.8.6";
+my $script_version = "1.8.7";
 
 # for more information.
 my %status = (     # Enumeration for the output Nagios states
