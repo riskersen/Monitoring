@@ -94,7 +94,7 @@
 # - added FortiManager Health Checks (cpu, mem, disk)
 # - added FortiManager Health Checks for connected devices health (up/down) and config-sync State (fmgdevice)
 # - added Fortigate Uptime warn (behaviour if warn is set)
-# - added Fortigate License expiration Check monitoring for FortiGate with critical & warning (license)
+# - added Fortigate License expiration Check monitoring for FortiGate with critical & warning (license) and option mode for ignoring expired license
 # - added Fortigate License Version Check for scheduled Updates on FortiGate (license-version)
 # - added Link-Monitor Health Check (alive,dead), tested on Forti900D running FortiOS 6.4.5, Forti60F 6.4.5
 # - added FortiGate conserve mode for proxy and kernel (conserve-proxy , conserve-kernel)
@@ -138,7 +138,7 @@ my %status = (     # Enumeration for the output Nagios states
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $expected, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
-    $blacklist, $whitelist, $nosync, $snmp_version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path) = parse_args();
+    $blacklist, $whitelist, $nosync, $ignoreexpiredlicense , $snmp_version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path) = parse_args();
 
 # Initialize variables....
 my $net_snmp_debug_level = 0x00; # See http://search.cpan.org/~dtown/Net-SNMP-v6.0.1/lib/Net/SNMP.pm#debug()_-_set_or_get_the_debug_mode_for_the_module
@@ -316,7 +316,7 @@ given ( $curr_serial ) {
          when ("cpu") { ($return_state, $return_string) = get_health_value($oid_faz_cpu_used, "CPU", "%"); }
          when ("mem") { ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%"); }
          when ("disk") { ($return_state, $return_string) = get_faz_health_value($oid_faz_disk_used, $oid_faz_disk_avail, "Disk", "%"); }
-         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|disk, $curr_device is a FORTIANALYZER (S/N: $curr_serial)"); }
+         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|disk $curr_device is a FORTIANALYZER (S/N: $curr_serial)"); }
       }
    } when ( /^FMG/ ) { # FMG = FortiManager
       given ( lc($type) ) {
@@ -324,7 +324,7 @@ given ( $curr_serial ) {
          when ("mem") { ($return_state, $return_string) = get_fmg_health_value($oid_fmg_mem_used, $oid_fmg_mem_avail, "Memory", "%"); }
          when ("disk") { ($return_state, $return_string) = get_fmg_health_value($oid_fmg_disk_used, $oid_fmg_disk_avail, "Disk", "%"); }
          when ("fmgdevice") { ($return_state, $return_string) = get_fmg_device_state(); }
-         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|disk, $curr_device is a FORTIANALYZER (S/N: $curr_serial)"); }
+         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|disk|fmgdevice $curr_device is a FORTIMANAGER (S/N: $curr_serial)"); }
       }
    } when ( /^FE/ ) { # FE = FORTIMAIL
       given ( lc($type) ) {
@@ -1008,12 +1008,15 @@ sub get_license_contract {
          my $license_contract_expiry = $license_contract_expiry_table{$oid_license_contract_expiry_table.'.'.$k};
          my $license_remaining = str2time($license_contract_expiry) - $license_actualdate;
          my $license_remaining_days = $license_remaining / 86400;
-        if (($license_remaining <= $license_warning) && ($license_remaining <= $license_critcal) ) {
+        if(($license_remaining > 0 ) && ($mode == 1))
+        {
+          if (($license_remaining <= $license_warning) && ($license_remaining <= $license_critcal) ) {
                 push (@license_expiry_warn_table, ($license_contract_descpriction.'/'.$license_contract_expiry));
               }
-        if ($license_remaining <= $license_critcal) {
+          if ($license_remaining <= $license_critcal) {
                 push (@license_expiry_crit_table, ($license_contract_descpriction.'/'.$license_contract_expiry));
               }
+        }
          $k++;
       }
       if (@license_expiry_warn_table) {
@@ -1396,7 +1399,6 @@ as an alternative to --authpassword/--privpassword/--community
 =item B<-T|--type>
 STRING - CPU, MEM, Ses, VPN, net, disk, ha, hasync, uptime, Cluster, wtp, hw, fazcpu, fazmem, fazdisk, sdwan-hc, fmgdevice, license, license-version, linkmonitor-hc
 
-
 =item B<-S|--serial>
 STRING - Primary serial number.
 
@@ -1405,7 +1407,6 @@ BOOL - Get values of slave
 
 =item B<-w|--warning>
 INTEGER - Warning threshold, applies to cpu, mem, disk, net, session, uptime, license.
-
 
 =item B<-c|--critical>
 INTEGER - Critical threshold, applies to cpu, mem, disk, net, session, license.
@@ -1419,8 +1420,12 @@ BOOL - Resets ip file (cluster only)
 =item B<-n|--nosync>
 BOOL - Exclude cluster synchronisation check (cluster only)
 
+=item B<--ignoreexpiredlicense>
+BOOL - Exclude expired licenses
+
 =item B<-M|--mode>
-STRING - Output-Mode: 0 => just print, 1 => print and show failed tunnel, 2 => critical
+STRING - vpn tunnel: Output-Mode: 0 => just print, 1 => print and show failed tunnel, 2 => critical
+STRING - license 1 => show expired license, 2 => dont show expired license
 
 =item B<-V|--vpnmode>
 STRING - VPN-Mode: both => IPSec & SSL/OpenVPN, ipsec => IPSec only, ssl => SSL/OpenVPN only
