@@ -138,7 +138,7 @@ my %status = (     # Enumeration for the output Nagios states
 
 # Parse out the arguments...
 my ($ip, $port, $community, $type, $warn, $crit, $expected, $slave, $pri_serial, $reset_file, $mode, $vpnmode,
-    $blacklist, $whitelist, $nosync , $snmp_version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path) = parse_args();
+    $blacklist, $whitelist, $nosync, $snmp_version, $user_name, $auth_password, $auth_prot, $priv_password, $priv_prot, $path) = parse_args();
 
 # Initialize variables....
 my $net_snmp_debug_level = 0x00; # See http://search.cpan.org/~dtown/Net-SNMP-v6.0.1/lib/Net/SNMP.pm#debug()_-_set_or_get_the_debug_mode_for_the_module
