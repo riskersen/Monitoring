@@ -928,7 +928,7 @@ sub get_sdwan_hc {
       my @sdwan_hc_failed;
 
       $return_state = "OK";
-      $return_string = "All SDWAN healt checks are in appropriate state";
+      $return_string = "All SDWAN health checks are in appropriate state";
 
       $k = 1;
       while ($k <= $sdwan_hc_cnt) {
@@ -947,7 +947,7 @@ sub get_sdwan_hc {
       }
 
    } else {
-      $return_string = "UNKNOWN: device has no SDWAN healt checks available";
+      $return_string = "UNKNOWN: device has no SDWAN health checks available";
       $return_state = "UNKNOWN";
    }
 
