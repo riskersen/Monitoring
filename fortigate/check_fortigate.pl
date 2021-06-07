@@ -97,6 +97,7 @@
 # - added Fortigate License expiration Check monitoring for FortiGate with critical & warning (license)
 # - added Fortigate License Version Check for scheduled Updates on FortiGate (license-version)
 # - added Link-Monitor Health Check (alive,dead), tested on Forti900D running FortiOS 6.4.5, Forti60F 6.4.5
+# - added FortiGate conserve mode for proxy and kernel (conserve-proxy , conserve-kernel)
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -262,10 +263,18 @@ my $oid_sdwan_healthcheck_state_table = ".1.3.6.1.4.1.12356.101.4.9.2.1.4";  # S
 my $oid_sdwan_healthcheck_name_table  = ".1.3.6.1.4.1.12356.101.4.9.2.1.2";  # SDWAN HealthCheck name table
 my $oid_sdwan_healthcheck_iname_table = ".1.3.6.1.4.1.12356.101.4.9.2.1.14"; # SDWAN HealthCheck interface name table
 
+# conserve Mode
+my $oid_lowmem_capacity     = ".1.3.6.1.4.1.12356.101.4.1.10.0";        #Total lowmem  memory (RAM) capacity (KB)
+my $oid_mem_enter_ker_thrsh  = ".1.3.6.1.4.1.12356.101.4.6.1.5.0";      #Current memory threshold level to enter kernel conserve mode (KB)
+my $oid_mem_leave_ker_thrsh  = ".1.3.6.1.4.1.12356.101.4.6.1.6.0";      #Current memory threshold level to leave kernel conserve mode (KB)
+my $oid_mem_enter_proxy_thrsh  = ".1.3.6.1.4.1.12356.101.4.6.1.7.0";    #Current memory threshold level to enter proxy conserve mode (KB)
+my $oid_mem_leave_proxy_thrsh  = ".1.3.6.1.4.1.12356.101.4.6.1.8.0";    #Current memory threshold level to leave proxy conserve mode (KB)
+
 # Link-Monitor
 my $oid_linkmonitor_healthcheck_count = ".1.3.6.1.4.1.12356.101.4.8.1.0";    # LinkMonitor HealthCheck count
 my $oid_linkmonitor_healthcheck_state_table = ".1.3.6.1.4.1.12356.101.4.8.2.1.3";  # LinkMonitor HealthCheck state table
 my $oid_linkmonitor_healthcheck_name_table  = ".1.3.6.1.4.1.12356.101.4.8.2.1.2";  # LinkMonitor HealthCheck name table
+
 # License FortiGate
 # license contract
 my $oid_license_contract_count                = ".1.3.6.1.4.1.12356.101.4.6.3.1.1.0";    # License Contract Count
@@ -358,6 +367,8 @@ given ( $curr_serial ) {
          when ("hw" ) { ($return_state, $return_string) = get_hw_state("%"); }
          when ("firmware") { ($return_state, $return_string) = get_firmware_state(); }
          when ("sdwan-hc") { ($return_state, $return_string) = get_sdwan_hc(); }
+         when ("conserve-proxy") { ($return_state, $return_string) = get_conserve_mode($oid_mem_enter_proxy_thrsh,$oid_mem_leave_proxy_thrsh,"proxy"); }
+         when ("conserve-kernel") { ($return_state, $return_string) = get_conserve_mode($oid_mem_enter_ker_thrsh,$oid_mem_leave_ker_thrsh,"kernel"); }
          when ("linkmonitor-hc") { ($return_state, $return_string) = get_linkmonitor_hc(); }
          when ("license") { ($return_state, $return_string) = get_license_contract(); }
          when ("license-version") { ($return_state, $return_string) = get_license_version(); }
@@ -1121,6 +1132,31 @@ sub get_fmg_device_state {
 
    return ($return_state, $return_string);
 } # end get_fmg_device_state
+
+sub get_conserve_mode {
+  my $oid_enter_trsh = $_[0];
+  my $oid_leave_trsh = $_[1];
+  my $label = $_[2];
+  my $lowmem_capacity = get_snmp_value($session, $oid_lowmem_capacity);
+  my $mem_enter_thrsh = get_snmp_value($session, $oid_enter_trsh);
+  my $mem_leave_thrsh = get_snmp_value($session, $oid_leave_trsh);
+
+  if ( $lowmem_capacity <= $mem_enter_thrsh ) {
+    $return_state = "CRITICAL";
+    $return_string = $label . " conserve mode entered !" ;
+  } elsif ( $lowmem_capacity <= $mem_leave_thrsh ) {
+    $return_state = "WARNING";
+    $return_string = $label . " conserve mode may entered ";
+  } else {
+    $return_state = "OK";
+    $return_string = "No " . $label . " conserve mode active";
+  }
+
+  $perf = "|'" . "low_mem_cap" . "'=" . $lowmem_capacity . ";" . $mem_enter_thrsh . ";" . $mem_leave_thrsh;
+  $return_string = $return_state . ": " . $return_string . "  " . $curr_device . " (Current device: " . $curr_serial .") " . $perf;
+
+  return ($return_state, $return_string);
+} # end get_conserve_mode
 
 sub close_snmp_session{
   my $session = $_[0];
