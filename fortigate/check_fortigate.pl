@@ -15,7 +15,7 @@
 # Tested on: FortiGate 60E (6.4.5)
 #
 # Author: Sebastian Gruber (github (at) sebastiangruber.de)
-# Date: 2021-02-10
+# Date: 2021-06-07
 #
 # Changelog:
 # Release 1.0 (2013)
@@ -90,9 +90,10 @@
 # - Change regex for IPSec VPN monitoring (tested on Forti800D running FortiOS 6.2.3)
 # Release 1.8.6 (2021-04-06) Dariusz Zielinski-Kolasinski
 # - Add SD-WAN Health Check monitoring (tested on Forti900D running FortiOS 6.4.5, Forti60F 6.4.5)
-# Release 1.8.7 (2021-05-31) Sebastian Gruber  (github (at) sebastiangruber.de)
-# - added FortiManager Checks (cpu, mem, disk)
-# - added FortiManager check for monitoring connected devices health (up/down) and config-sync State
+# Release 1.8.7 (2021-06-07) Sebastian Gruber  (github (at) sebastiangruber.de)
+# - added FortiManager Health Checks (cpu, mem, disk)
+# - added FortiManager Health Checks for connected devices health (up/down) and config-sync State
+# - added Fortigate Uptime warn (behaviour if warn is set)
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -453,17 +454,20 @@ sub get_ha_sync {
 
 sub get_uptime {
   my $value = (get_snmp_value($session, $oid_uptime)/100);
-
   my ($days_val, $rem_d_value) = (int($value / 86400), $value / 86400);
-
   my $hours_val = int(($rem_d_value-$days_val) * 24);
-
   my $minutes_val = int (((($rem_d_value-$days_val) * 24)-int(($rem_d_value-$days_val) * 24)) * 60);
 
-  $return_state = "OK";
-  $return_string = $days_val . " day(s) " . $hours_val . " hour(s) " . $minutes_val . " minute(s)";
+ if ( $warn != 80 && $value <= $warn ) {
+    $valuemin = $value / 60;
+    $return_state = "WARNING";
+    $return_string = "uptime is lower than " . $valuemin . " minutes. ";
+  }else {
+    $return_state = "OK";
+    $return_string = $days_val . " day(s) " . $hours_val . " hour(s) " . $minutes_val . " minute(s)";
+  }
 
-  $return_string = $return_state . ": " . $return_string;
+$return_string = $return_state . ": " . $return_string;
   return ($return_state, $return_string);
 }
 
@@ -1208,7 +1212,7 @@ STRING - Primary serial number.
 BOOL - Get values of slave
 
 =item B<-w|--warning>
-INTEGER - Warning threshold, applies to cpu, mem, disk, net, session.
+INTEGER - Warning threshold, applies to cpu, mem, disk, net, session, uptime.
 
 =item B<-c|--critical>
 INTEGER - Critical threshold, applies to cpu, mem, disk, net, session.
