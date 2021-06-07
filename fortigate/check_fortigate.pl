@@ -490,6 +490,7 @@ sub get_ha_sync {
 }
 
 sub get_uptime {
+  my $valuemin;
   my $value = (get_snmp_value($session, $oid_uptime)/100);
   my ($days_val, $rem_d_value) = (int($value / 86400), $value / 86400);
   my $hours_val = int(($rem_d_value-$days_val) * 24);
