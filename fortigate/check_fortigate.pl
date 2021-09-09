@@ -7,15 +7,14 @@
 # Tested on: FortiGate 100D / FortiGate 300C (5.0.3)
 # Tested on: FortiGate 200B (5.0.6), Fortigate 800C (5.2.2)
 # Tested on: FortiAnalyzer (5.2.4)
-# Tested on: FortiManager (6.4.4)
 # Tested on: FortiGate 100A (2.8)
 # Tested on: FortiGate 800D (6.2.3)
 # Tested on: FortiGate 900D (6.4.5)
 # Tested on: FortiGate 60F (6.4.5)
 # Tested on: FortiGate 60E (6.4.5)
 #
-# Author: Sebastian Gruber (github (at) sebastiangruber.de)
-# Date: 2021-06-07
+# Author: Boris PASCAULT (github (at) ituz.fr)
+# Date: 2020-03-25
 #
 # Changelog:
 # Release 1.0 (2013)
@@ -90,14 +89,8 @@
 # - Change regex for IPSec VPN monitoring (tested on Forti800D running FortiOS 6.2.3)
 # Release 1.8.6 (2021-04-06) Dariusz Zielinski-Kolasinski
 # - Add SD-WAN Health Check monitoring (tested on Forti900D running FortiOS 6.4.5, Forti60F 6.4.5)
-# Release 1.8.7 (2021-06-07) Sebastian Gruber  (github (at) sebastiangruber.de)
-# - added FortiManager Health Checks (cpu, mem, disk)
-# - added FortiManager Health Checks for connected devices health (up/down) and config-sync State (fmgdevice)
-# - added Fortigate Uptime warn (behaviour if warn is set)
-# - added Fortigate License expiration Check monitoring for FortiGate with critical & warning (license) and option mode for ignoring expired license
-# - added Fortigate License Version Check for scheduled Updates on FortiGate (license-version)
-# - added Link-Monitor Health Check (alive,dead), tested on Forti900D running FortiOS 6.4.5, Forti60F 6.4.5
-# - added FortiGate conserve mode for proxy and kernel (conserve-proxy , conserve-kernel)
+# Release 1.8.7 (2021-09-09) René Riech (rene.riech (at) t-online.de)
+# - Added checks for Fortigate FG201 (tested on FortiOS v6.4.5)
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -123,10 +116,9 @@ use Getopt::Long qw(:config no_ignore_case bundling);
 use Pod::Usage;
 use Socket;
 use POSIX;
-use Date::Parse;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.8.8";
+my $script_version = "1.8.6";
 
 # for more information.
 my %status = (     # Enumeration for the output Nagios states
@@ -176,15 +168,17 @@ my $oid_unitdesc         = ".1.3.6.1.2.1.1.5.0";                   # Location of
 my $oid_serial           = ".1.3.6.1.4.1.12356.100.1.1.1.0";       # Location of Fortinet serial number (String)
 my $oid_firmware         = ".1.3.6.1.4.1.12356.101.4.1.1.0";       # Location of Fortinet firmware
 my $oid_cpu              = ".1.3.6.1.4.1.12356.101.13.2.1.1.3";    # Location of cluster member CPU (%)
+my $oid_fg201_cpu        = ".1.3.6.1.4.1.12356.101.4.1.3.0";       # Location of cluster member CPU (%) on a FG201
 my $oid_net              = ".1.3.6.1.4.1.12356.101.13.2.1.1.5";    # Location of cluster member Net (kbps)
 my $oid_mem              = ".1.3.6.1.4.1.12356.101.13.2.1.1.4";    # Location of cluster member Mem (%)
+my $oid_fg201_mem        = ".1.3.6.1.4.1.12356.101.4.1.4.0";       # Location of cluster member Mem (%) on a FG201
 my $oid_ses              = ".1.3.6.1.4.1.12356.101.13.2.1.1.6";    # Location of cluster member Sessions (int)
+my $oid_fg201_ses        = ".1.3.6.1.4.1.12356.101.4.1.8.0";       # Location of cluster member Sessions (int) on a FG201
 my $oid_disk_usage       = ".1.3.6.1.4.1.12356.101.4.1.6.0";       # Location of disk usage value (int - used space kb)
 my $oid_disk_cap         = ".1.3.6.1.4.1.12356.101.4.1.7.0";       # Location of disk capacity value (int - total capacity kb)
 my $oid_ha               = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of HA Mode (int - standalone(1),activeActive(2),activePassive(3) )
 my $oid_ha_sync_prefix   = ".1.3.6.1.4.1.12356.101.13.2.1.1.15";   # Location of HA Sync Checksum prefix (string - if match, nodes are synced )
 my $oid_uptime           = ".1.3.6.1.4.1.12356.101.4.1.20.0";      # Location of Uptime value (int - hundredths of a second)
-
 
 ## Legacy OIDs ##
 my $oid_legacy_serial    = ".1.3.6.1.4.1.12356.1.2.0";             # Location of Fortinet serial number (String)
@@ -207,19 +201,6 @@ my $oid_fe_ldisk         = ".1.3.6.1.4.1.12356.105.1.8.0";         # Location of
 my $oid_fe_mdisk         = ".1.3.6.1.4.1.12356.105.1.9.0";         # Location of Mail Disk used for FortiMail (%)
 my $oid_fe_load          = ".1.3.6.1.4.1.12356.105.1.30.0";        # Location of Load used for FortiMail (%)
 my $oid_fe_ses           = ".1.3.6.1.4.1.12356.105.1.10.0";        # Location of cluster member Sessions for FortiMail (int)
-
-## FortiManager OIDS ###
-my $oid_fmg_cpu_used     = ".1.3.6.1.4.1.12356.103.2.1.1.0";          # Location of CPU for FortiManager (%)
-my $oid_fmg_mem_used     = ".1.3.6.1.4.1.12356.103.2.1.2.0";          # Location of Memory used for FortiManager (kb)
-my $oid_fmg_mem_avail    = ".1.3.6.1.4.1.12356.103.2.1.3.0";          # Location of Memory available for FortiManager (kb)
-my $oid_fmg_disk_used    = ".1.3.6.1.4.1.12356.103.2.1.4.0";          # Location of Disk used for FortiManager (Mb)
-my $oid_fmg_disk_avail   = ".1.3.6.1.4.1.12356.103.2.1.5.0";          # Location of Disk available for FortiManager (Mb)
-my $oid_fmg_device_count   = ".1.3.6.1.4.1.12356.103.6.1.1.0";        # Count of Devices for FortiManager
-my $oid_fmg_device_table   = ".1.3.6.1.4.1.12356.103.6.2";            # Location of Device Table for FortiManager
-my $oid_fmg_device_name_table   = ".1.3.6.1.4.1.12356.103.6.2.1.2";   # Location of Device Table Name for FortiManager
-my $oid_fmg_device_adom_table   = ".1.3.6.1.4.1.12356.103.6.2.1.5";   # Location of Device Table admom for FortiManager
-my $oid_fmg_device_con_state_table   = ".1.3.6.1.4.1.12356.103.6.2.1.12";   # Location of Device Table connection state for FortiManager
-my $oid_fmg_device_config_state_table   = ".1.3.6.1.4.1.12356.103.6.2.1.14";   # Location of Device Table config state for FortiManager
 
 ## FortiADC OIDs ##
 my $oid_fad_mem           = ".1.3.6.1.4.1.12356.112.1.5.0";        # Location of Memory for FortiADC (%)
@@ -263,32 +244,6 @@ my $oid_sdwan_healthcheck_state_table = ".1.3.6.1.4.1.12356.101.4.9.2.1.4";  # S
 my $oid_sdwan_healthcheck_name_table  = ".1.3.6.1.4.1.12356.101.4.9.2.1.2";  # SDWAN HealthCheck name table
 my $oid_sdwan_healthcheck_iname_table = ".1.3.6.1.4.1.12356.101.4.9.2.1.14"; # SDWAN HealthCheck interface name table
 
-# conserve Mode
-my $oid_lowmem_capacity     = ".1.3.6.1.4.1.12356.101.4.1.10.0";        #Total lowmem  memory (RAM) capacity (KB)
-my $oid_mem_enter_ker_thrsh  = ".1.3.6.1.4.1.12356.101.4.6.1.5.0";      #Current memory threshold level to enter kernel conserve mode (KB)
-my $oid_mem_leave_ker_thrsh  = ".1.3.6.1.4.1.12356.101.4.6.1.6.0";      #Current memory threshold level to leave kernel conserve mode (KB)
-my $oid_mem_enter_proxy_thrsh  = ".1.3.6.1.4.1.12356.101.4.6.1.7.0";    #Current memory threshold level to enter proxy conserve mode (KB)
-my $oid_mem_leave_proxy_thrsh  = ".1.3.6.1.4.1.12356.101.4.6.1.8.0";    #Current memory threshold level to leave proxy conserve mode (KB)
-
-# Link-Monitor
-my $oid_linkmonitor_healthcheck_count = ".1.3.6.1.4.1.12356.101.4.8.1.0";    # LinkMonitor HealthCheck count
-my $oid_linkmonitor_healthcheck_state_table = ".1.3.6.1.4.1.12356.101.4.8.2.1.3";  # LinkMonitor HealthCheck state table
-my $oid_linkmonitor_healthcheck_name_table  = ".1.3.6.1.4.1.12356.101.4.8.2.1.2";  # LinkMonitor HealthCheck name table
-
-# License FortiGate
-# license contract
-my $oid_license_contract_count                = ".1.3.6.1.4.1.12356.101.4.6.3.1.1.0";    # License Contract Count
-my $oid_license_contract_description_table    = ".1.3.6.1.4.1.12356.101.4.6.3.1.2.1.1";  # License Contract description
-my $oid_license_contract_expiry_table         = "1.3.6.1.4.1.12356.101.4.6.3.1.2.1.2";   # License Contract expiry time
-
-# license Version
-my $oid_license_version_count                = ".1.3.6.1.4.1.12356.101.4.6.3.2.1.0";    # License Version Count
-my $oid_license_version_description_table    = ".1.3.6.1.4.1.12356.101.4.6.3.2.2.1.1";  # License Version description
-my $oid_license_version_upd_time_table       = ".1.3.6.1.4.1.12356.101.4.6.3.2.2.1.4";  # License Version update time
-my $oid_license_version_upd_method_table     = ".1.3.6.1.4.1.12356.101.4.6.3.2.2.1.5";  # License Version update method
-my $oid_license_version_try_time_table       = ".1.3.6.1.4.1.12356.101.4.6.3.2.2.1.6";  # License Version try time
-my $oid_license_version_try_result_table     = ".1.3.6.1.4.1.12356.101.4.6.3.2.2.1.7";  # License Version try result
-
 ## Stuff ##
 my $return_state;                                     # return state
 my $return_string;                                    # return string
@@ -316,15 +271,7 @@ given ( $curr_serial ) {
          when ("cpu") { ($return_state, $return_string) = get_health_value($oid_faz_cpu_used, "CPU", "%"); }
          when ("mem") { ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%"); }
          when ("disk") { ($return_state, $return_string) = get_faz_health_value($oid_faz_disk_used, $oid_faz_disk_avail, "Disk", "%"); }
-         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|disk $curr_device is a FORTIANALYZER (S/N: $curr_serial)"); }
-      }
-   } when ( /^FMG/ ) { # FMG = FortiManager
-      given ( lc($type) ) {
-         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_fmg_cpu_used, "CPU", "%"); }
-         when ("mem") { ($return_state, $return_string) = get_fmg_health_value($oid_fmg_mem_used, $oid_fmg_mem_avail, "Memory", "%"); }
-         when ("disk") { ($return_state, $return_string) = get_fmg_health_value($oid_fmg_disk_used, $oid_fmg_disk_avail, "Disk", "%"); }
-         when ("fmgdevice") { ($return_state, $return_string) = get_fmg_device_state(); }
-         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|disk|fmgdevice $curr_device is a FORTIMANAGER (S/N: $curr_serial)"); }
+         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|disk, $curr_device is a FORTIANALYZER (S/N: $curr_serial)"); }
       }
    } when ( /^FE/ ) { # FE = FORTIMAIL
       given ( lc($type) ) {
@@ -352,7 +299,17 @@ given ( $curr_serial ) {
          when ("net") { ($return_state, $return_string) = get_health_value($oid_legacy_net, "Network", ""); }
          default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|ses|net, $curr_device is a Legacy Fortigate (S/N: $curr_serial)"); }
       }
-   } default { # OTHERS (FG = FORTIGATE...)
+   } when ( /^FG201/ ) { # FG201
+      given ( lc($type) ) {
+         when ("mem") { ($return_state, $return_string) = get_health_value($oid_fg201_mem, "Memory", "%"); }
+         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_fg201_cpu, "CPU", "%"); }
+         when ("ses") { ($return_state, $return_string) = get_health_value($oid_fg201_ses, "Session", ""); }
+         when ("ha") { ($return_state, $return_string) = get_ha_mode(); }
+         when ("hw" ) { ($return_state, $return_string) = get_hw_state("%"); }
+         default { ($return_state, $return_string) = get_cluster_state(); }
+      }
+}
+default { # OTHERS (FG = FORTIGATE...)
       given ( lc($type) ) {
          when ("cpu") { ($return_state, $return_string) = get_health_value($oid_cpu, "CPU", "%"); }
          when ("mem") { ($return_state, $return_string) = get_health_value($oid_mem, "Memory", "%"); }
@@ -367,11 +324,6 @@ given ( $curr_serial ) {
          when ("hw" ) { ($return_state, $return_string) = get_hw_state("%"); }
          when ("firmware") { ($return_state, $return_string) = get_firmware_state(); }
          when ("sdwan-hc") { ($return_state, $return_string) = get_sdwan_hc(); }
-         when ("conserve-proxy") { ($return_state, $return_string) = get_conserve_mode($oid_mem_enter_proxy_thrsh,$oid_mem_leave_proxy_thrsh,"proxy"); }
-         when ("conserve-kernel") { ($return_state, $return_string) = get_conserve_mode($oid_mem_enter_ker_thrsh,$oid_mem_leave_ker_thrsh,"kernel"); }
-         when ("linkmonitor-hc") { ($return_state, $return_string) = get_linkmonitor_hc(); }
-         when ("license") { ($return_state, $return_string) = get_license_contract(); }
-         when ("license-version") { ($return_state, $return_string) = get_license_version(); }
          default { ($return_state, $return_string) = get_cluster_state(); }
       }
    }
@@ -490,22 +442,18 @@ sub get_ha_sync {
 }
 
 sub get_uptime {
-  my $valuemin;
   my $value = (get_snmp_value($session, $oid_uptime)/100);
+
   my ($days_val, $rem_d_value) = (int($value / 86400), $value / 86400);
+
   my $hours_val = int(($rem_d_value-$days_val) * 24);
+
   my $minutes_val = int (((($rem_d_value-$days_val) * 24)-int(($rem_d_value-$days_val) * 24)) * 60);
 
- if ( $warn != 80 && $value <= $warn ) {
-    $valuemin = $value / 60;
-    $return_state = "WARNING";
-    $return_string = "uptime is lower than " . $valuemin . " minutes. ";
-  }else {
-    $return_state = "OK";
-    $return_string = $days_val . " day(s) " . $hours_val . " hour(s) " . $minutes_val . " minute(s)";
-  }
+  $return_state = "OK";
+  $return_string = $days_val . " day(s) " . $hours_val . " hour(s) " . $minutes_val . " minute(s)";
 
-$return_string = $return_state . ": " . $return_string;
+  $return_string = $return_state . ": " . $return_string;
   return ($return_state, $return_string);
 }
 
@@ -536,9 +484,11 @@ sub get_health_value {
       $label = "slave_" . $label;
   } elsif ( $curr_serial =~ /^FG100A/ ) {
       $oid = $_[0];
+  } elsif ( $curr_serial =~ /^FG201/ ) {
+      $oid = $_[0];
   } elsif ( $curr_serial =~ /^FG/ ) {
       $oid = $_[0] . ".1";
-  } else {
+} else {
       $oid = $_[0];
   }
 
@@ -563,6 +513,7 @@ sub get_health_value {
 
   return ($return_state, $return_string);
 } # end health value
+
 
 sub get_faz_health_value {
   my $used_oid = $_[0];
@@ -595,37 +546,6 @@ sub get_faz_health_value {
 
   return ($return_state, $return_string);
 } # end faz health value
-sub get_fmg_health_value {
-  my $used_oid = $_[0];
-  my $avail_oid = $_[1];
-  my $label = $_[2];
-  my $UOM   = $_[3];
-
-  my $used_value = get_snmp_value($session, $used_oid);
-  my $avail_value = get_snmp_value($session, $avail_oid);
-
-  # strip any leading or trailing non zeros
-  $used_value =~ s/\D*(\d+)\D*/$1/g;
-  $avail_value =~ s/\D*(\d+)\D*/$1/g;
-
-  $value = floor($used_value/$avail_value*100);
-
- if ( $value >= $crit ) {
-    $return_state = "CRITICAL";
-    $return_string = $label . " is critical: " . $value . $UOM;
-  } elsif ( $value >= $warn ) {
-    $return_state = "WARNING";
-    $return_string = $label . " is warning: " . $value . $UOM;
-  } else {
-    $return_state = "OK";
-    $return_string = $label . " is okay: " . $value. $UOM;
-  }
-
-  $perf = "|'" . lc($label) . "'=" . $value . $UOM . ";" . $warn . ";" . $crit;
-  $return_string = $return_state . ": " . $curr_device . " (Current device: " . $curr_serial .") " . $return_string . $perf;
-
-  return ($return_state, $return_string);
-} # end fmg health value
 
 sub get_cluster_state {
   my @help_serials; # helper array
@@ -739,10 +659,10 @@ sub get_vpn_state {
 	  my %ActiveSSLTunnel_table = %{get_snmp_table($session, $oid_ActiveSSLTunnel)};
     foreach my $k (keys(%ActiveSSL_table)) {
       $ActiveSSL += $ActiveSSL_table{$k};
-    }
+    }	  
     foreach my $k (keys(%ActiveSSLTunnel_table)) {
       $ActiveSSLTunnel += $ActiveSSLTunnel_table{$k};
-    }
+    }	  
   }
   # Unless specifically requesting SSL checks only, do an IPSec tunnel check
   if ($vpnmode ne "ssl") {
@@ -917,6 +837,7 @@ sub get_hw_state{
    return ($return_state, $return_string);
 } # end hw state
 
+
 # Get SD-WAN Health Check list and check its status (Alive/Dead)
 sub get_sdwan_hc {
    my $k;
@@ -929,7 +850,7 @@ sub get_sdwan_hc {
       my @sdwan_hc_failed;
 
       $return_state = "OK";
-      $return_string = "All SDWAN health checks are in appropriate state";
+      $return_string = "All SDWAN healt checks are in appropriate state";
 
       $k = 1;
       while ($k <= $sdwan_hc_cnt) {
@@ -948,219 +869,12 @@ sub get_sdwan_hc {
       }
 
    } else {
-      $return_string = "UNKNOWN: device has no SDWAN health checks available";
+      $return_string = "UNKNOWN: device has no SDWAN healt checks available";
       $return_state = "UNKNOWN";
    }
 
    return ($return_state, $return_string);
 } # end sdwan_hc
-# Get Link Monitor Health Check list and check its status (Alive/Dead)
-sub get_linkmonitor_hc {
-   my $k;
-   my $linkmonitor_hc_cnt = get_snmp_value($session, $oid_linkmonitor_healthcheck_count);
-   if ( $linkmonitor_hc_cnt > 0 ) {
-      my %linkmonitor_hc_name_table = %{get_snmp_table($session, $oid_linkmonitor_healthcheck_name_table)};
-      my %linkmonitor_hc_state_table = %{get_snmp_table($session, $oid_linkmonitor_healthcheck_state_table)};
-
-      my @linkmonitor_hc_failed;
-
-      $return_state = "OK";
-      $return_string = "All Link Monitor health checks are in appropriate state";
-
-      $k = 1;
-      while ($k <= $linkmonitor_hc_cnt) {
-         my $linkmonitor_hc_name = $linkmonitor_hc_name_table{$oid_linkmonitor_healthcheck_name_table.'.'.$k};
-         my $linkmonitor_hc_state = $linkmonitor_hc_state_table{$oid_linkmonitor_healthcheck_state_table.'.'.$k};
-         if ($linkmonitor_hc_state eq '1') {
-            push (@linkmonitor_hc_failed, ($linkmonitor_hc_name));
-         }
-         $k++;
-      }
-
-      if (@linkmonitor_hc_failed) {
-         $return_string = 'Link Monitor HC Failed: '.join(';', @linkmonitor_hc_failed);
-         $return_state = 'CRITICAL';
-      }
-   } else {
-      $return_string = "UNKNOWN: device has no Link Monitor healt checks available";
-      $return_state = "UNKNOWN";
-   }
-   return ($return_state, $return_string);
-} # end get_linkmonitor_hc
-# Get License contract Information and checks if its expiring soon
-sub get_license_contract {
-   my $k;
-   my $lic_contract_cnt = get_snmp_value($session, $oid_license_contract_count );
-   if ( $lic_contract_cnt > 0 ) {
-      my %license_contract_descpriction_table = %{get_snmp_table($session, $oid_license_contract_description_table)};
-      my %license_contract_expiry_table = %{get_snmp_table($session, $oid_license_contract_expiry_table)};
-      my @license_expiry_warn_table;
-      my @license_expiry_crit_table;
-      $return_state = "OK";
-      #$return_string = "All licenses are in appropriate state";
-      $k = 1;
-      my $license_actualdate = time();
-      my $license_warning = $warn * 86400;
-      my $license_critcal = $crit * 86400;
-      my $return_string_errors = "";
-      while ($k <= $lic_contract_cnt) {
-         my $license_contract_descpriction = $license_contract_descpriction_table{$oid_license_contract_description_table.'.'.$k};
-         my $license_contract_expiry = $license_contract_expiry_table{$oid_license_contract_expiry_table.'.'.$k};
-         my $license_remaining = str2time($license_contract_expiry) - $license_actualdate;
-         my $license_remaining_days = $license_remaining / 86400;
-        if(($license_remaining > 0 ) && ($mode == 1))
-        {
-          if (($license_remaining <= $license_warning) && ($license_remaining <= $license_critcal) ) {
-                push (@license_expiry_warn_table, ($license_contract_descpriction.'/'.$license_contract_expiry));
-              }
-          if ($license_remaining <= $license_critcal) {
-                push (@license_expiry_crit_table, ($license_contract_descpriction.'/'.$license_contract_expiry));
-              }
-        }
-         $k++;
-      }
-      if (@license_expiry_warn_table) {
-          $return_string_errors .= sprintf(" WARNING[%s]", join(", ", @license_expiry_warn_table));
-          $return_state = 'WARNING';
-      }
-      if (@license_expiry_crit_table){
-          $return_string_errors .= sprintf(" CRITICAL[%s]", join(", ", @license_expiry_crit_table));
-          $return_state = 'CRITICAL';
-      }
-      $return_string = $return_state . ": " . $curr_device . "  ";
-      $return_string .=  $return_string_errors;
-   } else {
-      $return_string = "UNKNOWN: device has no license checks available";
-      $return_state = "UNKNOWN";
-   }
-   return ($return_state, $return_string);
-} # end license_contract
-
-sub get_license_version {
-   my $k;
-   my $lic_version_cnt = get_snmp_value($session, $oid_license_version_count );
-   if ( $lic_version_cnt > 0 ) {
-      my %license_version_descpriction_table = %{get_snmp_table($session, $oid_license_version_description_table)};
-      #last real update
-      my %license_version_upd_time_table = %{get_snmp_table($session, $oid_license_version_upd_time_table)};
-      my %license_version_upd_method_table = %{get_snmp_table($session, $oid_license_version_upd_method_table)};
-      #last try
-      my %license_version_try_time_table = %{get_snmp_table($session, $oid_license_version_try_time_table)};
-      my %license_version_try_result_table = %{get_snmp_table($session, $oid_license_version_try_result_table)};
-      #update method: "scheduled" , manual @tryresultOK = ("Updates Installed", "No Updates");
-      my @tryresultfailure = ("Connectivity failure", "No Updates", "Unauthorized");
-      my @license_failed_table;
-      my @license_version_table;
-      $k = 1;
-      my ($lic_version_scheduled_cnt, $lic_version_manual_cnt) = 0;
-      my $return_string_errors = "";
-      while ($k <= $lic_version_cnt) {
-        my $license_version_descpriction = $license_version_descpriction_table{$oid_license_version_description_table.'.'.$k};
-        my $license_version_upd_time = $license_version_upd_time_table{$oid_license_version_upd_time_table.'.'.$k};
-        my $license_version_upd_method = $license_version_upd_method_table{$oid_license_version_upd_method_table.'.'.$k};
-        my $license_version_try_time = $license_version_try_time_table{$oid_license_version_try_time_table.'.'.$k};
-        my $license_version_try_result = $license_version_try_result_table{$oid_license_version_try_result_table.'.'.$k};
-        if($license_version_upd_method eq "scheduled")
-        {
-          # only check scheduled
-          if ( grep { $_ eq $license_version_upd_method } @license_failed_table ){
-            push (@license_failed_table, ($license_version_descpriction.'/ last try time: '.$license_version_try_time.' last error: '.$license_version_try_result));
-          }
-          $lic_version_scheduled_cnt++;
-        }elsif($license_version_upd_method eq "manual"){
-          $lic_version_manual_cnt++;
-        }
-         $k++;
-      }
-      if (@license_failed_table) {
-          $return_string_errors .= sprintf(" $lic_version_scheduled_cnt / $lic_version_cnt scheduled updates with error [%s]", join(", ", @license_failed_table));
-          $return_state = 'CRITICAL';
-      }else{
-          $return_state = "OK";
-          $return_string_errors .= sprintf("All scheduled licenses are in appropriate state.");
-      }
-      $return_string = $return_state . ": " . $curr_device . " scheduled:" . $lic_version_scheduled_cnt . "  manual:" . $lic_version_manual_cnt;
-      $return_string .=  $return_string_errors;
-   } else {
-      $return_string = "UNKNOWN: device has no license checks available";
-      $return_state = "UNKNOWN";
-   }
-   return ($return_state, $return_string);
-} # end license_version
-# Get FortiManger Device State list and check its connect state (up/down) (critical) and all without sync (warning)
-sub get_fmg_device_state {
-   my $k;
-   my $fmg_device_cnt = get_snmp_value($session, $oid_fmg_device_count);
-   if ( $fmg_device_cnt > 0 ) {
-      my %fmg_device_name_table = %{get_snmp_table($session, $oid_fmg_device_name_table)};
-      my %fmg_device_adom_table = %{get_snmp_table($session, $oid_fmg_device_adom_table)};
-      my %fmg_device_con_state_table = %{get_snmp_table($session, $oid_fmg_device_con_state_table)};
-      my %fmg_device_config_state_table = %{get_snmp_table($session, $oid_fmg_device_config_state_table)};
-      my $return_string_errors = "";
-      my @fmg_device_down; # List all devices that are down
-      my @fmg_device_config; # List all devices that are out of sync
-
-      $return_state = "OK";
-      $return_string = "All Devices are in appropriate state";
-
-      $k = 1;
-      while ($k <= $fmg_device_cnt) {
-         my $fmg_device_name = $fmg_device_name_table{$oid_fmg_device_name_table.'.'.$k};
-         my $fmg_device_adom = $fmg_device_adom_table{$oid_fmg_device_adom_table.'.'.$k};
-         my $fmg_device_con_state = $fmg_device_con_state_table{$oid_fmg_device_con_state_table.'.'.$k};
-         my $fmg_device_config_state = $fmg_device_config_state_table{$oid_fmg_device_config_state_table.'.'.$k};
-         if ($fmg_device_con_state eq '2') {
-            push (@fmg_device_down, ($fmg_device_name.'/'.$fmg_device_adom));
-         }
-         if ($fmg_device_config_state eq '2') {
-            push (@fmg_device_config, ($fmg_device_name.'/'.$fmg_device_adom));
-         }
-         $k++;
-      }
-      if (@fmg_device_config) {
-         $return_state = 'WARNING';
-         $return_string_errors .= sprintf(" Config Out-Of-Sync[%s]", join(", ", @fmg_device_config));
-      }
-      if (@fmg_device_down ) {
-         $return_string_errors .= sprintf(" DOWN[%s]", join(", ", @fmg_device_down));
-         $return_state = 'CRITICAL';
-      }
-      # Write an output string...
-      $return_string = $return_state . ": " . $curr_device . "  ";
-      $return_string .=  $return_string_errors;
-
-   } else {
-      $return_string = "UNKNOWN: device has no connected devices available";
-      $return_state = "UNKNOWN";
-   }
-
-   return ($return_state, $return_string);
-} # end get_fmg_device_state
-
-sub get_conserve_mode {
-  my $oid_enter_trsh = $_[0];
-  my $oid_leave_trsh = $_[1];
-  my $label = $_[2];
-  my $lowmem_capacity = get_snmp_value($session, $oid_lowmem_capacity);
-  my $mem_enter_thrsh = get_snmp_value($session, $oid_enter_trsh);
-  my $mem_leave_thrsh = get_snmp_value($session, $oid_leave_trsh);
-
-  if ( $lowmem_capacity <= $mem_enter_thrsh ) {
-    $return_state = "CRITICAL";
-    $return_string = $label . " conserve mode entered !" ;
-  } elsif ( $lowmem_capacity <= $mem_leave_thrsh ) {
-    $return_state = "WARNING";
-    $return_string = $label . " conserve mode may entered ";
-  } else {
-    $return_state = "OK";
-    $return_string = "No " . $label . " conserve mode active";
-  }
-
-  $perf = "|'" . "low_mem_cap" . "'=" . $lowmem_capacity . ";" . $mem_enter_thrsh . ";" . $mem_leave_thrsh;
-  $return_string = $return_state . ": " . $return_string . "  " . $curr_device . " (Current device: " . $curr_serial .") " . $perf;
-
-  return ($return_state, $return_string);
-} # end get_conserve_mode
 
 sub close_snmp_session{
   my $session = $_[0];
@@ -1397,7 +1111,7 @@ as an alternative to --authpassword/--privpassword/--community
 =over
 
 =item B<-T|--type>
-STRING - CPU, MEM, Ses, VPN, net, disk, ha, hasync, uptime, Cluster, wtp, hw, fazcpu, fazmem, fazdisk, sdwan-hc, fmgdevice, license, license-version, linkmonitor-hc
+STRING - CPU, MEM, Ses, VPN, net, disk, ha, hasync, uptime, Cluster, wtp, hw, fazcpu, fazmem, fazdisk, sdwan-hc
 
 =item B<-S|--serial>
 STRING - Primary serial number.
@@ -1406,10 +1120,10 @@ STRING - Primary serial number.
 BOOL - Get values of slave
 
 =item B<-w|--warning>
-INTEGER - Warning threshold, applies to cpu, mem, disk, net, session, uptime, license.
+INTEGER - Warning threshold, applies to cpu, mem, disk, net, session, fazcpu, fazmem, fazdisk.
 
 =item B<-c|--critical>
-INTEGER - Critical threshold, applies to cpu, mem, disk, net, session, license.
+INTEGER - Critical threshold, applies to cpu, mem, disk, net, session fazcpu, fazmem, fazdisk.
 
 =item B<-e|--expected>
 INTEGER - Critical threshold, applies to ha.
@@ -1420,12 +1134,8 @@ BOOL - Resets ip file (cluster only)
 =item B<-n|--nosync>
 BOOL - Exclude cluster synchronisation check (cluster only)
 
-=item B<--ignoreexpiredlicense>
-BOOL - Exclude expired licenses
-
 =item B<-M|--mode>
-STRING - vpn tunnel: Output-Mode: 0 => just print, 1 => print and show failed tunnel, 2 => critical
-STRING - license 1 => show expired license, 2 => dont show expired license
+STRING - Output-Mode: 0 => just print, 1 => print and show failed tunnel, 2 => critical
 
 =item B<-V|--vpnmode>
 STRING - VPN-Mode: both => IPSec & SSL/OpenVPN, ipsec => IPSec only, ssl => SSL/OpenVPN only
