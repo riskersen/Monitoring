@@ -98,7 +98,9 @@
 # - added Fortigate License Version Check for scheduled Updates on FortiGate (license-version)
 # - added Link-Monitor Health Check (alive,dead), tested on Forti900D running FortiOS 6.4.5, Forti60F 6.4.5
 # - added FortiGate conserve mode for proxy and kernel (conserve-proxy , conserve-kernel)
-# Release 1.8.8 (2021-06-18) Sebastian Gruber  (github (at) sebastiangruber.de)
+# Release 1.8.8 (2021-09-09) René Riech (rene.riech (at) t-online.de)
+# - Added checks for Fortigate FG201 (tested on FortiOS v6.4.5)
+# Release 1.8.9 (2021-06-18) Sebastian Gruber  (github (at) sebastiangruber.de)
 # - fixed Fortigate License Check
 #
 # This program is free software; you can redistribute it and/or
@@ -186,7 +188,9 @@ my $oid_disk_cap         = ".1.3.6.1.4.1.12356.101.4.1.7.0";       # Location of
 my $oid_ha               = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of HA Mode (int - standalone(1),activeActive(2),activePassive(3) )
 my $oid_ha_sync_prefix   = ".1.3.6.1.4.1.12356.101.13.2.1.1.15";   # Location of HA Sync Checksum prefix (string - if match, nodes are synced )
 my $oid_uptime           = ".1.3.6.1.4.1.12356.101.4.1.20.0";      # Location of Uptime value (int - hundredths of a second)
-
+my $oid_fg201_cpu        = ".1.3.6.1.4.1.12356.101.4.1.3.0";       # Location of cluster member CPU (%) on a FG201
+my $oid_fg201_mem        = ".1.3.6.1.4.1.12356.101.4.1.4.0";       # Location of cluster member Mem (%) on a FG201
+my $oid_fg201_ses        = ".1.3.6.1.4.1.12356.101.4.1.8.0";       # Location of cluster member Sessions (int) on a FG201
 
 ## Legacy OIDs ##
 my $oid_legacy_serial    = ".1.3.6.1.4.1.12356.1.2.0";             # Location of Fortinet serial number (String)
@@ -353,6 +357,15 @@ given ( $curr_serial ) {
          when ("ses") { ($return_state, $return_string) = get_health_value($oid_legacy_ses, "Session", ""); }
          when ("net") { ($return_state, $return_string) = get_health_value($oid_legacy_net, "Network", ""); }
          default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|ses|net, $curr_device is a Legacy Fortigate (S/N: $curr_serial)"); }
+      }
+   } when ( /^FG201/ ) { # FG201
+      given ( lc($type) ) {
+         when ("mem") { ($return_state, $return_string) = get_health_value($oid_fg201_mem, "Memory", "%"); }
+         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_fg201_cpu, "CPU", "%"); }
+         when ("ses") { ($return_state, $return_string) = get_health_value($oid_fg201_ses, "Session", ""); }
+         when ("ha") { ($return_state, $return_string) = get_ha_mode(); }
+         when ("hw" ) { ($return_state, $return_string) = get_hw_state("%"); }
+         default { ($return_state, $return_string) = get_cluster_state(); }
       }
    } default { # OTHERS (FG = FORTIGATE...)
       given ( lc($type) ) {
@@ -538,6 +551,8 @@ sub get_health_value {
       $label = "slave_" . $label;
   } elsif ( $curr_serial =~ /^FG100A/ ) {
       $oid = $_[0];
+  } elsif ( $curr_serial =~ /^FG201/ ) {
+      $oid = $_[0];    
   } elsif ( $curr_serial =~ /^FG/ ) {
       $oid = $_[0] . ".1";
   } else {
