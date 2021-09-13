@@ -100,6 +100,8 @@
 # - added FortiGate conserve mode for proxy and kernel (conserve-proxy , conserve-kernel)
 # Release 1.8.8 (2021-09-09) René Riech (rene.riech (at) t-online.de)
 # - Added checks for Fortigate FG201 (tested on FortiOS v6.4.5)
+# Release 1.8.9 (2021-06-18) Sebastian Gruber  (github (at) sebastiangruber.de)
+# - fixed Fortigate License Check
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -1023,12 +1025,16 @@ sub get_license_contract {
          my $license_contract_expiry = $license_contract_expiry_table{$oid_license_contract_expiry_table.'.'.$k};
          my $license_remaining = str2time($license_contract_expiry) - $license_actualdate;
          my $license_remaining_days = $license_remaining / 86400;
-        if(($license_remaining > 0 ) && ($mode == 1))
+        if($license_remaining >= 0 )
         {
           if (($license_remaining <= $license_warning) && ($license_remaining <= $license_critcal) ) {
                 push (@license_expiry_warn_table, ($license_contract_descpriction.'/'.$license_contract_expiry));
               }
           if ($license_remaining <= $license_critcal) {
+                push (@license_expiry_crit_table, ($license_contract_descpriction.'/'.$license_contract_expiry));
+              }
+        }else{
+	       if ($mode == 1) {
                 push (@license_expiry_crit_table, ($license_contract_descpriction.'/'.$license_contract_expiry));
               }
         }
