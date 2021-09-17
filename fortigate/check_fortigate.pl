@@ -102,6 +102,10 @@
 # - Added checks for Fortigate FG201 (tested on FortiOS v6.4.5)
 # Release 1.8.9 (2021-06-18) Sebastian Gruber  (github (at) sebastiangruber.de)
 # - fixed Fortigate License Check
+# Release 1.8.10 (2021-09-17) Sebastian Gruber  (github (at) sebastiangruber.de)
+# - fixed checks for Fortigate system info introduced: cpu-sys , mem-sys
+# - added Sessions check for IPv4 / IPv6 ses-ipv4, ses-ipv6
+# - reorder OIDs
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -130,7 +134,7 @@ use POSIX;
 use Date::Parse;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.8.8";
+my $script_version = "1.8.10";
 
 # for more information.
 my %status = (     # Enumeration for the output Nagios states
@@ -179,18 +183,30 @@ if ( $error ne "" ) {
 my $oid_unitdesc         = ".1.3.6.1.2.1.1.5.0";                   # Location of Fortinet device description... (String)
 my $oid_serial           = ".1.3.6.1.4.1.12356.100.1.1.1.0";       # Location of Fortinet serial number (String)
 my $oid_firmware         = ".1.3.6.1.4.1.12356.101.4.1.1.0";       # Location of Fortinet firmware
+
+# fg ha info / Cluster member
+my $oid_ha               = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of HA Mode (int - standalone(1),activeActive(2),activePassive(3) )
 my $oid_cpu              = ".1.3.6.1.4.1.12356.101.13.2.1.1.3";    # Location of cluster member CPU (%)
+my $oid_mem              = ".1.3.6.1.4.1.12356.101.13.2.1.1.4";    # Location of cluster member Mem (%) (fgHaStatsMemUsage) counts the 'freeable cache' as 'used'
 my $oid_net              = ".1.3.6.1.4.1.12356.101.13.2.1.1.5";    # Location of cluster member Net (kbps)
-my $oid_mem              = ".1.3.6.1.4.1.12356.101.13.2.1.1.4";    # Location of cluster member Mem (%)
-my $oid_ses              = ".1.3.6.1.4.1.12356.101.13.2.1.1.6";    # Location of cluster member Sessions (int)
+my $oid_ses_ha           = ".1.3.6.1.4.1.12356.101.13.2.1.1.6";    # Location of cluster member Sessions (int) (Current session count of specified cluster member)
+my $oid_ha_sync_prefix   = ".1.3.6.1.4.1.12356.101.13.2.1.1.15";   # Location of HA Sync Checksum prefix (string - if match, nodes are synced )
+
+# fg system-info
+my $oid_cpu_sys          = ".1.3.6.1.4.1.12356.101.4.1.3.0";       # Location of Current CPU usage (percentage)
+my $oid_mem_sysmem       = ".1.3.6.1.4.1.12356.101.4.1.4.0";       # Location Current memory utilization (%) (fgSysMemUsage)
 my $oid_disk_usage       = ".1.3.6.1.4.1.12356.101.4.1.6.0";       # Location of disk usage value (int - used space kb)
 my $oid_disk_cap         = ".1.3.6.1.4.1.12356.101.4.1.7.0";       # Location of disk capacity value (int - total capacity kb)
-my $oid_ha               = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of HA Mode (int - standalone(1),activeActive(2),activePassive(3) )
-my $oid_ha_sync_prefix   = ".1.3.6.1.4.1.12356.101.13.2.1.1.15";   # Location of HA Sync Checksum prefix (string - if match, nodes are synced )
+my $oid_ses_device_ipv4  = ".1.3.6.1.4.1.12356.101.4.1.8.0";       # Location of cluster member Number of active ipv4 sessions on the device (int)
+my $oid_ses_device_ipv6  = ".1.3.6.1.4.1.12356.101.4.1.15.0";      # Location of cluster member Number of active ipv6 sessions on the device (int)
 my $oid_uptime           = ".1.3.6.1.4.1.12356.101.4.1.20.0";      # Location of Uptime value (int - hundredths of a second)
-my $oid_fg201_cpu        = ".1.3.6.1.4.1.12356.101.4.1.3.0";       # Location of cluster member CPU (%) on a FG201
-my $oid_fg201_mem        = ".1.3.6.1.4.1.12356.101.4.1.4.0";       # Location of cluster member Mem (%) on a FG201
-my $oid_fg201_ses        = ".1.3.6.1.4.1.12356.101.4.1.8.0";       # Location of cluster member Sessions (int) on a FG201
+
+
+#to be removed  after feature works
+my $oid_fg201_cpu        = ".1.3.6.1.4.1.12356.101.4.1.3.0";       # Location of cluster member CPU (%) on a FG201-> moving to oid_cpu_sys
+my $oid_fg201_mem        = ".1.3.6.1.4.1.12356.101.4.1.4.0";       # Location of cluster member Mem (%) on a FG201 -> moving to oid_mem_sysmem
+my $oid_fg201_ses        = ".1.3.6.1.4.1.12356.101.4.1.8.0";       # Location of cluster member Sessions (int) on a FG201 -> moving to oid_ses_device_ipv4
+#end
 
 ## Legacy OIDs ##
 my $oid_legacy_serial    = ".1.3.6.1.4.1.12356.1.2.0";             # Location of Fortinet serial number (String)
@@ -358,21 +374,26 @@ given ( $curr_serial ) {
          when ("net") { ($return_state, $return_string) = get_health_value($oid_legacy_net, "Network", ""); }
          default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|ses|net, $curr_device is a Legacy Fortigate (S/N: $curr_serial)"); }
       }
-   } when ( /^FG201/ ) { # FG201
-      given ( lc($type) ) {
-         when ("mem") { ($return_state, $return_string) = get_health_value($oid_fg201_mem, "Memory", "%"); }
-         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_fg201_cpu, "CPU", "%"); }
-         when ("ses") { ($return_state, $return_string) = get_health_value($oid_fg201_ses, "Session", ""); }
-         when ("ha") { ($return_state, $return_string) = get_ha_mode(); }
-         when ("hw" ) { ($return_state, $return_string) = get_hw_state("%"); }
-         default { ($return_state, $return_string) = get_cluster_state(); }
-      }
+      # out comment for test - need to be removed if feature works as intended
+   #} when ( /^FG201/ ) { # FG201
+     # given ( lc($type) ) {
+     #    when ("mem") { ($return_state, $return_string) = get_health_value($oid_fg201_mem, "Memory", "%"); }
+     #    when ("cpu") { ($return_state, $return_string) = get_health_value($oid_fg201_cpu, "CPU", "%"); }
+     #    when ("ses") { ($return_state, $return_string) = get_health_value($oid_fg201_ses, "Session", ""); }
+     #    when ("ha") { ($return_state, $return_string) = get_ha_mode(); }
+     #    when ("hw" ) { ($return_state, $return_string) = get_hw_state("%"); }
+     #    default { ($return_state, $return_string) = get_cluster_state(); }
+     # }
    } default { # OTHERS (FG = FORTIGATE...)
       given ( lc($type) ) {
          when ("cpu") { ($return_state, $return_string) = get_health_value($oid_cpu, "CPU", "%"); }
+         when ("cpu-sys") { ($return_state, $return_string) = get_health_value($oid_cpu_sys, "CPU", "%"); }
          when ("mem") { ($return_state, $return_string) = get_health_value($oid_mem, "Memory", "%"); }
+         when ("mem-sys") { ($return_state, $return_string) = get_health_value($oid_mem_sysmem, "Memory", "%"); }
          when ("net") { ($return_state, $return_string) = get_health_value($oid_net, "Network", "kb"); }
-         when ("ses") { ($return_state, $return_string) = get_health_value($oid_ses, "Session", ""); }
+         when ("ses") { ($return_state, $return_string) = get_health_value($oid_ses_ha, "Session", ""); }
+         when ("ses-ipv4") { ($return_state, $return_string) = get_health_value($oid_ses_device_ipv4, "Session IPv4", ""); }
+         when ("ses-ipv6") { ($return_state, $return_string) = get_health_value($oid_ses_device_ipv6, "Session IPv6", ""); }
          when ("disk") { ($return_state, $return_string) = get_disk_usage(); }
          when ("ha") { ($return_state, $return_string) = get_ha_mode(); }
          when ("hasync") { ($return_state, $return_string) = get_ha_sync(); }
@@ -552,7 +573,7 @@ sub get_health_value {
   } elsif ( $curr_serial =~ /^FG100A/ ) {
       $oid = $_[0];
   } elsif ( $curr_serial =~ /^FG201/ ) {
-      $oid = $_[0];    
+      $oid = $_[0];
   } elsif ( $curr_serial =~ /^FG/ ) {
       $oid = $_[0] . ".1";
   } else {
@@ -1418,7 +1439,7 @@ as an alternative to --authpassword/--privpassword/--community
 =over
 
 =item B<-T|--type>
-STRING - CPU, MEM, Ses, VPN, net, disk, ha, hasync, uptime, Cluster, wtp, hw, fazcpu, fazmem, fazdisk, sdwan-hc, fmgdevice, license, license-version, linkmonitor-hc
+STRING - CPU, MEM, cpu-sys, mem-sys, ses, VPN, net, disk, ha, hasync, uptime, Cluster, wtp, hw, fazcpu, fazmem, fazdisk, sdwan-hc, fmgdevice, license, license-version, linkmonitor-hc
 
 =item B<-S|--serial>
 STRING - Primary serial number.
@@ -1427,10 +1448,10 @@ STRING - Primary serial number.
 BOOL - Get values of slave
 
 =item B<-w|--warning>
-INTEGER - Warning threshold, applies to cpu, mem, disk, net, session, uptime, license.
+INTEGER - Warning threshold, applies to cpu, cpu-sys, mem, mem-sys, disk, net, ses, ses-ipv4, ses-ipv6, uptime, license.
 
 =item B<-c|--critical>
-INTEGER - Critical threshold, applies to cpu, mem, disk, net, session, license.
+INTEGER - Critical threshold, applies to cpu, cpu-sys, mem, mem-sys, disk, net, ses, ses-ipv4, ses-ipv6, license.
 
 =item B<-e|--expected>
 INTEGER - Critical threshold, applies to ha.
