@@ -14,8 +14,8 @@
 # Tested on: FortiGate 60F (6.4.5)
 # Tested on: FortiGate 60E (6.4.5)
 #
-# Author: Sebastian Gruber (github (at) sebastiangruber.de)
-# Date: 2021-06-07
+# Author: Sebastian Gruber (git (at) 94g.de)
+# Date: 2021-09-17
 #
 # Changelog:
 # Release 1.0 (2013)
@@ -100,9 +100,9 @@
 # - added FortiGate conserve mode for proxy and kernel (conserve-proxy , conserve-kernel)
 # Release 1.8.8 (2021-09-09) René Riech (rene.riech (at) t-online.de)
 # - Added checks for Fortigate FG201 (tested on FortiOS v6.4.5)
-# Release 1.8.9 (2021-06-18) Sebastian Gruber  (github (at) sebastiangruber.de)
+# Release 1.8.9 (2021-06-18) Sebastian Gruber  (git (at) 94g.de)
 # - fixed Fortigate License Check
-# Release 1.8.10 (2021-09-17) Sebastian Gruber  (github (at) sebastiangruber.de)
+# Release 1.8.10 (2021-09-17) Sebastian Gruber  (git (at) 94g.de)
 # - fixed checks for Fortigate system info introduced: cpu-sys , mem-sys
 # - added Sessions check for IPv4 / IPv6 ses-ipv4, ses-ipv6
 # - reorder OIDs
