@@ -201,19 +201,12 @@ my $oid_ses_device_ipv4  = ".1.3.6.1.4.1.12356.101.4.1.8.0";       # Location of
 my $oid_ses_device_ipv6  = ".1.3.6.1.4.1.12356.101.4.1.15.0";      # Location of cluster member Number of active ipv6 sessions on the device (int)
 my $oid_uptime           = ".1.3.6.1.4.1.12356.101.4.1.20.0";      # Location of Uptime value (int - hundredths of a second)
 
-
-#to be removed  after feature works
-my $oid_fg201_cpu        = ".1.3.6.1.4.1.12356.101.4.1.3.0";       # Location of cluster member CPU (%) on a FG201-> moving to oid_cpu_sys
-my $oid_fg201_mem        = ".1.3.6.1.4.1.12356.101.4.1.4.0";       # Location of cluster member Mem (%) on a FG201 -> moving to oid_mem_sysmem
-my $oid_fg201_ses        = ".1.3.6.1.4.1.12356.101.4.1.8.0";       # Location of cluster member Sessions (int) on a FG201 -> moving to oid_ses_device_ipv4
-#end
-
 ## Legacy OIDs ##
 my $oid_legacy_serial    = ".1.3.6.1.4.1.12356.1.2.0";             # Location of Fortinet serial number (String)
-my $oid_legacy_cpu       = ".1.3.6.1.4.1.12356.1.8.0";               # Location of cluster member CPU (%)
+my $oid_legacy_cpu       = ".1.3.6.1.4.1.12356.1.8.0";             # Location of cluster member CPU (%)
 my $oid_legacy_net       = ".1.3.6.1.4.1.12356.1.100.6.1.5.1";     # Location of cluster member Net (kbps)
-my $oid_legacy_mem       = ".1.3.6.1.4.1.12356.1.9.0";               # Location of cluster member Mem (%)
-my $oid_legacy_ses       = ".1.3.6.1.4.1.12356.1.10.0";              # Location of cluster member Sessions (int)
+my $oid_legacy_mem       = ".1.3.6.1.4.1.12356.1.9.0";             # Location of cluster member Mem (%)
+my $oid_legacy_ses       = ".1.3.6.1.4.1.12356.1.10.0";            # Location of cluster member Sessions (int)
 
 ## FortiAnalyzer OIDs ##
 my $oid_faz_cpu_used     = ".1.3.6.1.4.1.12356.103.2.1.1.0";       # Location of CPU for FortiAnalyzer (%)
@@ -231,34 +224,34 @@ my $oid_fe_load          = ".1.3.6.1.4.1.12356.105.1.30.0";        # Location of
 my $oid_fe_ses           = ".1.3.6.1.4.1.12356.105.1.10.0";        # Location of cluster member Sessions for FortiMail (int)
 
 ## FortiManager OIDS ###
-my $oid_fmg_cpu_used     = ".1.3.6.1.4.1.12356.103.2.1.1.0";          # Location of CPU for FortiManager (%)
-my $oid_fmg_mem_used     = ".1.3.6.1.4.1.12356.103.2.1.2.0";          # Location of Memory used for FortiManager (kb)
-my $oid_fmg_mem_avail    = ".1.3.6.1.4.1.12356.103.2.1.3.0";          # Location of Memory available for FortiManager (kb)
-my $oid_fmg_disk_used    = ".1.3.6.1.4.1.12356.103.2.1.4.0";          # Location of Disk used for FortiManager (Mb)
-my $oid_fmg_disk_avail   = ".1.3.6.1.4.1.12356.103.2.1.5.0";          # Location of Disk available for FortiManager (Mb)
-my $oid_fmg_device_count   = ".1.3.6.1.4.1.12356.103.6.1.1.0";        # Count of Devices for FortiManager
-my $oid_fmg_device_table   = ".1.3.6.1.4.1.12356.103.6.2";            # Location of Device Table for FortiManager
-my $oid_fmg_device_name_table   = ".1.3.6.1.4.1.12356.103.6.2.1.2";   # Location of Device Table Name for FortiManager
-my $oid_fmg_device_adom_table   = ".1.3.6.1.4.1.12356.103.6.2.1.5";   # Location of Device Table admom for FortiManager
-my $oid_fmg_device_con_state_table   = ".1.3.6.1.4.1.12356.103.6.2.1.12";   # Location of Device Table connection state for FortiManager
+my $oid_fmg_cpu_used     = ".1.3.6.1.4.1.12356.103.2.1.1.0";                   # Location of CPU for FortiManager (%)
+my $oid_fmg_mem_used     = ".1.3.6.1.4.1.12356.103.2.1.2.0";                   # Location of Memory used for FortiManager (kb)
+my $oid_fmg_mem_avail    = ".1.3.6.1.4.1.12356.103.2.1.3.0";                   # Location of Memory available for FortiManager (kb)
+my $oid_fmg_disk_used    = ".1.3.6.1.4.1.12356.103.2.1.4.0";                   # Location of Disk used for FortiManager (Mb)
+my $oid_fmg_disk_avail   = ".1.3.6.1.4.1.12356.103.2.1.5.0";                   # Location of Disk available for FortiManager (Mb)
+my $oid_fmg_device_count   = ".1.3.6.1.4.1.12356.103.6.1.1.0";                 # Count of Devices for FortiManager
+my $oid_fmg_device_table   = ".1.3.6.1.4.1.12356.103.6.2";                     # Location of Device Table for FortiManager
+my $oid_fmg_device_name_table   = ".1.3.6.1.4.1.12356.103.6.2.1.2";            # Location of Device Table Name for FortiManager
+my $oid_fmg_device_adom_table   = ".1.3.6.1.4.1.12356.103.6.2.1.5";            # Location of Device Table admom for FortiManager
+my $oid_fmg_device_con_state_table   = ".1.3.6.1.4.1.12356.103.6.2.1.12";      # Location of Device Table connection state for FortiManager
 my $oid_fmg_device_config_state_table   = ".1.3.6.1.4.1.12356.103.6.2.1.14";   # Location of Device Table config state for FortiManager
 
 ## FortiADC OIDs ##
 my $oid_fad_mem           = ".1.3.6.1.4.1.12356.112.1.5.0";        # Location of Memory for FortiADC (%)
 my $oid_fad_ldisk         = ".1.3.6.1.4.1.12356.112.1.6.0";        # Location of Log Disk Usage for FortiADC (%)
 my $oid_fad_load          = ".1.3.6.1.4.1.12356.112.1.30.0";       # Location of Load used for FortiADC (%)
-#  my $oid_fad_load       = ".1.3.6.1.4.1.12356.112.1.40.0";         # "SNMP No Such Object"
+#  my $oid_fad_load       = ".1.3.6.1.4.1.12356.112.1.40.0";       # "SNMP No Such Object"
 my $oid_fad_cpu           = ".1.3.6.1.4.1.12356.112.1.4.0";        # Location of CPU for FortiADC (%)
 
 # Cluster
-my $oid_cluster_type     = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of Fortinet cluster type (String)
-my $oid_cluster_serials  = ".1.3.6.1.4.1.12356.101.13.2.1.1.2";    # Location of Cluster serials (String)
-my $oid_cluster_sync_state = ".1.3.6.1.4.1.12356.101.13.2.1.1.12"; # Location of cluster sync state (int)
+my $oid_cluster_type       = ".1.3.6.1.4.1.12356.101.13.1.1.0";      # Location of Fortinet cluster type (String)
+my $oid_cluster_serials    = ".1.3.6.1.4.1.12356.101.13.2.1.1.2";    # Location of Cluster serials (String)
+my $oid_cluster_sync_state = ".1.3.6.1.4.1.12356.101.13.2.1.1.12";   # Location of cluster sync state (int)
 
 # VPN OIDs
 # XXX to be checked
-my $oid_ActiveSSL         = ".1.3.6.1.4.1.12356.101.12.2.3.1.2"; # Location of Fortinet firewall SSL VPN Tunnel connection count
-my $oid_ActiveSSLTunnel   = ".1.3.6.1.4.1.12356.101.12.2.3.1.6"; # Location of Fortinet firewall SSL VPN Tunnel connection count
+my $oid_ActiveSSL         = ".1.3.6.1.4.1.12356.101.12.2.3.1.2";   # Location of Fortinet firewall SSL VPN Tunnel connection count
+my $oid_ActiveSSLTunnel   = ".1.3.6.1.4.1.12356.101.12.2.3.1.6";   # Location of Fortinet firewall SSL VPN Tunnel connection count
 my $oid_ipsectuntableroot = ".1.3.6.1.4.1.12356.101.12.2.2.1";     # Table of IPSec VPN tunnels
 my $oidf_tunstatus        = ".20";                                 # Location of a tunnel's connection status
 my $oidf_tunndx           = ".1";                                  # Location of a tunnel's index...
@@ -374,16 +367,6 @@ given ( $curr_serial ) {
          when ("net") { ($return_state, $return_string) = get_health_value($oid_legacy_net, "Network", ""); }
          default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|ses|net, $curr_device is a Legacy Fortigate (S/N: $curr_serial)"); }
       }
-      # out comment for test - need to be removed if feature works as intended
-   #} when ( /^FG201/ ) { # FG201
-     # given ( lc($type) ) {
-     #    when ("mem") { ($return_state, $return_string) = get_health_value($oid_fg201_mem, "Memory", "%"); }
-     #    when ("cpu") { ($return_state, $return_string) = get_health_value($oid_fg201_cpu, "CPU", "%"); }
-     #    when ("ses") { ($return_state, $return_string) = get_health_value($oid_fg201_ses, "Session", ""); }
-     #    when ("ha") { ($return_state, $return_string) = get_ha_mode(); }
-     #    when ("hw" ) { ($return_state, $return_string) = get_hw_state("%"); }
-     #    default { ($return_state, $return_string) = get_cluster_state(); }
-     # }
    } default { # OTHERS (FG = FORTIGATE...)
       given ( lc($type) ) {
          when ("cpu") { ($return_state, $return_string) = get_health_value($oid_cpu, "CPU", "%"); }
