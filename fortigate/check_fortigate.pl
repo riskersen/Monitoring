@@ -90,7 +90,7 @@
 # - Change regex for IPSec VPN monitoring (tested on Forti800D running FortiOS 6.2.3)
 # Release 1.8.6 (2021-04-06) Dariusz Zielinski-Kolasinski
 # - Add SD-WAN Health Check monitoring (tested on Forti900D running FortiOS 6.4.5, Forti60F 6.4.5)
-# Release 1.8.7 (2021-06-07) Sebastian Gruber  (github (at) sebastiangruber.de)
+# Release 1.8.7 (2021-06-07) Sebastian Gruber  (git (at) 94g.de)
 # - added FortiManager Health Checks (cpu, mem, disk)
 # - added FortiManager Health Checks for connected devices health (up/down) and config-sync State (fmgdevice)
 # - added Fortigate Uptime warn (behaviour if warn is set)
