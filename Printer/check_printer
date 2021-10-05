@@ -10,10 +10,12 @@
  * 	- Sebastian Puschhof (MIDAN Software GmbH)
  *	- Juan Jesús Cervera (Teruel)
  *
- * Last update: 2017-02-07
+ * Last update: 2021-10-05
  * Changelog:
  *	2017-02-07 - Oliver Skibbe oliskibbe@gmail.com
  *		- Added UOM "c" to perfdata output
+ *      2021-10-05 - vKnmnn
+ *              - Fixed perfdata
  */
 
 // ignore notices
@@ -119,7 +121,7 @@ function nagios_return ( $return, $str, $perfdata = array() ) {
 		echo " | ";
 		foreach ( $perfdata as $name => $perf ) {
 			$str = $name."=".$perf['value'];
-			$str .= ";";
+			$str .= "c;";
 			if ( isset ( $perf['warn'] ) )
 				$str .= $perf['warn'];
 			$str .= ";";
@@ -132,7 +134,7 @@ function nagios_return ( $return, $str, $perfdata = array() ) {
 			if ( isset ( $perf['max'] ) )
 				$str .= $perf['max'];
 			$str = preg_replace ( '@(;+)$@', ';', $str );
-			echo $str."c ";
+			echo $str." ";
 		}
 	}
 	exit($return);
