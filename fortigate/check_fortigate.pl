@@ -106,7 +106,7 @@
 # - fixed checks for Fortigate system info introduced: cpu-sys , mem-sys
 # - added Sessions check for IPv4 / IPv6 ses-ipv4, ses-ipv6
 # - reorder OIDs
-#
+
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
 # as published by the Free Software Foundation; either version 2
@@ -361,22 +361,22 @@ given ( $curr_serial ) {
       }
    } when ( /^FG100A/ ) { # 100A = Legacy Device
       given ( lc($type) ) {
-         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_legacy_cpu, "CPU", "%"); }
-         when ("mem") { ($return_state, $return_string) = get_health_value($oid_legacy_mem, "Memory", "%"); }
-         when ("ses") { ($return_state, $return_string) = get_health_value($oid_legacy_ses, "Session", ""); }
-         when ("net") { ($return_state, $return_string) = get_health_value($oid_legacy_net, "Network", ""); }
+         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_legacy_cpu, "CPU", "%",1); }
+         when ("mem") { ($return_state, $return_string) = get_health_value($oid_legacy_mem, "Memory", "%",1); }
+         when ("ses") { ($return_state, $return_string) = get_health_value($oid_legacy_ses, "Session", "",1); }
+         when ("net") { ($return_state, $return_string) = get_health_value($oid_legacy_net, "Network", "",1); }
          default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|ses|net, $curr_device is a Legacy Fortigate (S/N: $curr_serial)"); }
       }
    } default { # OTHERS (FG = FORTIGATE...)
       given ( lc($type) ) {
          when ("cpu") { ($return_state, $return_string) = get_health_value($oid_cpu, "CPU", "%"); }
-         when ("cpu-sys") { ($return_state, $return_string) = get_health_value($oid_cpu_sys, "CPU", "%"); }
+         when ("cpu-sys") { ($return_state, $return_string) = get_health_value($oid_cpu_sys, "CPU", "%",1); }
          when ("mem") { ($return_state, $return_string) = get_health_value($oid_mem, "Memory", "%"); }
-         when ("mem-sys") { ($return_state, $return_string) = get_health_value($oid_mem_sysmem, "Memory", "%"); }
+         when ("mem-sys") { ($return_state, $return_string) = get_health_value($oid_mem_sysmem, "Memory", "%",1); }
          when ("net") { ($return_state, $return_string) = get_health_value($oid_net, "Network", "kb"); }
          when ("ses") { ($return_state, $return_string) = get_health_value($oid_ses_ha, "Session", ""); }
-         when ("ses-ipv4") { ($return_state, $return_string) = get_health_value($oid_ses_device_ipv4, "Session IPv4", ""); }
-         when ("ses-ipv6") { ($return_state, $return_string) = get_health_value($oid_ses_device_ipv6, "Session IPv6", ""); }
+         when ("ses-ipv4") { ($return_state, $return_string) = get_health_value($oid_ses_device_ipv4, "Session IPv4", "",1); }
+         when ("ses-ipv6") { ($return_state, $return_string) = get_health_value($oid_ses_device_ipv6, "Session IPv6", "",1); }
          when ("disk") { ($return_state, $return_string) = get_disk_usage(); }
          when ("ha") { ($return_state, $return_string) = get_ha_mode(); }
          when ("hasync") { ($return_state, $return_string) = get_ha_sync(); }
@@ -524,7 +524,7 @@ sub get_uptime {
     $return_string = $days_val . " day(s) " . $hours_val . " hour(s) " . $minutes_val . " minute(s)";
   }
 
-$return_string = $return_state . ": " . $return_string;
+  $return_string = $return_state . ": " . $return_string;
   return ($return_state, $return_string);
 }
 
@@ -549,13 +549,21 @@ sub get_firmware_state {
 sub get_health_value {
   my $label = $_[1];
   my $UOM   = $_[2];
+  my $health_mode = 0;
+
+  if ($_[3]){
+    $health_mode = $_[3];
+   }
+   # HealthMode checks if value is one and sets default to no extension, we need that for several checks (including FG100A)
+   # Possible input zero ( defaults to 0) and 1
+   # non FG / 100A -> $_[0];
+   # FG -> $_[0] . ".1";
+   # Secondary -> $_[0] . ".2";
 
   if ( $slave == 1 ) {
       $oid = $_[0] . ".2";
       $label = "slave_" . $label;
-  } elsif ( $curr_serial =~ /^FG100A/ ) {
-      $oid = $_[0];
-  } elsif ( $curr_serial =~ /^FG201/ ) {
+  } elsif ( $health_mode == 1 ) {
       $oid = $_[0];
   } elsif ( $curr_serial =~ /^FG/ ) {
       $oid = $_[0] . ".1";
@@ -768,7 +776,7 @@ sub get_vpn_state {
   # Unless specifically requesting SSL checks only, do an IPSec tunnel check
   if ($vpnmode ne "ssl") {
   # N/A as of 2015
-#    # Get just the top level tunnel data
+  # Get just the top level tunnel data
     my %tunnels_names  = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunname)};
     my %tunnels_status = %{get_snmp_table($session, $oid_ipsectuntableroot . $oidf_tunstatus)};
 
