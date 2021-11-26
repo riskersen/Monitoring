@@ -215,6 +215,13 @@ my $oid_faz_mem_avail    = ".1.3.6.1.4.1.12356.103.2.1.3.0";       # Location of
 my $oid_faz_disk_used    = ".1.3.6.1.4.1.12356.103.2.1.4.0";       # Location of Disk used for FortiAnalyzer (Mb)
 my $oid_faz_disk_avail   = ".1.3.6.1.4.1.12356.103.2.1.5.0";       # Location of Disk available for FortiAnalyzer (Mb)
 
+## FortiAuthenticator OIDs ##
+my $oid_fac_cpu          = ".1.3.6.1.4.1.12356.113.1.4.0";         # facSysCpuUsage - Instantaneous CPU usage (%)
+my $oid_fac_mem          = ".1.3.6.1.4.1.12356.113.1.5.0";         # facSysMemUsage - Instantaneous memory usage (%)
+my $oid_fac_ldisk        = ".1.3.6.1.4.1.12356.113.1.6.0";         # facSysLogDiskUsage - Instantaneous log disk usage (%)
+my $oid_fac_ha           = ".1.3.6.1.4.1.12356.113.1.201.1.0";     # facHaCurrentStatus - Instantaneous HA status for this node
+my $oid_fac_firmware     = ".1.3.6.1.4.1.12356.113.1.3.0";         # facSysVersion - Device firmware version
+
 ## FortiMail OIDs ##
 my $oid_fe_cpu           = ".1.3.6.1.4.1.12356.105.1.6.0";         # Location of CPU for FortiMail (%)
 my $oid_fe_mem           = ".1.3.6.1.4.1.12356.105.1.7.0";         # Location of Memory used for FortiMail (%)
@@ -332,6 +339,21 @@ given ( $curr_serial ) {
          when ("mem") { ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%"); }
          when ("disk") { ($return_state, $return_string) = get_faz_health_value($oid_faz_disk_used, $oid_faz_disk_avail, "Disk", "%"); }
          default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|disk $curr_device is a FORTIANALYZER (S/N: $curr_serial)"); }
+      }
+   } when ( /^FAC/ ) { # FAC = FortiAuthenticator
+      given ( lc($type) ) {
+         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_fac_cpu, "CPU", "%"); }
+         when ("mem") { ($return_state, $return_string) = get_health_value($oid_fac_mem, "Memory", "%"); }
+         when ("ldisk") { ($return_state, $return_string) = get_health_value($oid_fac_ldisk, "Log Disk", "%"); }
+         when ("ha") {
+            $oid_ha = $oid_fac_ha; # hack to get "ha" check going
+            ($return_state, $return_string) = get_ha_mode();
+         }
+         when ("firmware") {
+            $oid_firmware = $oid_fac_firmware; # hack to get "firmware" check going
+            ($return_state, $return_string) = get_firmware_state();
+         }
+         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|firmware|ha|mem|ldisk, $curr_device is a FORTIAUTHENTICATOR (S/N: $curr_serial)"); }
       }
    } when ( /^FMG/ ) { # FMG = FortiManager
       given ( lc($type) ) {
