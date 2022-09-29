@@ -15,7 +15,7 @@
 # Tested on: FortiGate 60E (6.4.5)
 #
 # Author: Sebastian Gruber (git (at) 94g.de)
-# Date: 2021-09-17
+# Date: 2022-09-29
 #
 # Changelog:
 # Release 1.0 (2013)
@@ -106,6 +106,8 @@
 # - fixed checks for Fortigate system info introduced: cpu-sys , mem-sys
 # - added Sessions check for IPv4 / IPv6 ses-ipv4, ses-ipv6
 # - reorder OIDs
+# Release 1.8.11 (2022-09-29) Dariusz Zielinski-Kolasinski
+# - allow "any" value for critical/waring when in "wtp" mode (tested on Forti900D)
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -872,11 +874,22 @@ sub get_wtp_state {
     } # end wtp while
 
     $value = ($wtpoffline / $wtpcount) * 100;
-
-    if ( $value >= $crit ) {
+    if ($crit eq "any" && $wtpoffline > 0) {
       $return_state = "CRITICAL";
-    } elsif ( $value >= $warn ) {
+    } elsif ($warn eq "any" && $wtpoffline > 0) {
       $return_state = "WARNING";
+    } elsif ( $crit ne "any" && $value >= $crit ) {
+      $return_state = "CRITICAL";
+    } elsif ( $warn ne "any" &&  $value >= $warn ) {
+      $return_state = "WARNING";
+    }
+
+    # format - for performance data
+    if ( $crit eq "any" ) {
+      $crit = "0";
+    }
+    if ($warn eq "any") {
+      $warn = "0";
     }
 
     $return_string = "$return_state - $wtpoffline offline WiFi access point(s) over $wtpcount found : ".(sprintf("%.2f",$value))." $UOM : ".$downwtp."|'APs'=".$wtpcount.";; 'Down APs'=".$wtpoffline.";; 'APs_Unavailable'=".$value.$UOM.";".$warn.";".$crit;
@@ -1305,9 +1318,19 @@ sub parse_args {
   pod2usage(-exitval => 3, -verbose => 3) if $help;
 
   # removing any non digits
-  if ( $type ne "firmware" ) {
+  if ( $type ne "firmware" and $type ne "wtp" ) {
     $warn =~ s/\D*(\d+)\D*/$1/g;
     $crit =~ s/\D*(\d+)\D*/$1/g;
+  }
+
+  # allow "any" for WTP critical
+  if ( $type eq "wtp" && $crit ne "any") {
+    $crit =~ s/\D*(\d+)\D*/$1/g;
+  }
+
+  # allow "any" for WTP warning
+  if ( $type eq "wtp" && $warn ne "any") {
+    $warn =~ s/\D*(\d+)\D*/$1/g;
   }
 
   # read credentials from file, if specified
@@ -1433,8 +1456,14 @@ BOOL - Get values of slave
 =item B<-w|--warning>
 INTEGER - Warning threshold, applies to cpu, cpu-sys, mem, mem-sys, disk, net, ses, ses-ipv4, ses-ipv6, uptime, license.
 
+=item B<-w|--warning>
+INTEGER or STRING - Warning threshold or word "any", applies to wtp
+
 =item B<-c|--critical>
 INTEGER - Critical threshold, applies to cpu, cpu-sys, mem, mem-sys, disk, net, ses, ses-ipv4, ses-ipv6, license.
+
+=item B<-c|--critical>
+INTEGER or STRING - Critical threshold or word "any", applies to wtp
 
 =item B<-e|--expected>
 INTEGER - Critical threshold, applies to ha.
