@@ -17,6 +17,7 @@
 # Tested on: FortiGate 200F (6.4.5, 6.4.7, 6.4.8, 6.4.9)
 # Tested on: FortiGate 300D (6.4.5, 6.4.7, 6.4.8, 6.4.9)
 # Tested on: FortiGate 60E (6.4.5)
+# Tested on: FortiGate 200E (6.4.5)
 #
 # Author: Sebastian Gruber (git (at) 94g.de)
 # Date: 2022-09-29
@@ -102,7 +103,7 @@
 # - added Fortigate License Version Check for scheduled Updates on FortiGate (license-version)
 # - added Link-Monitor Health Check (alive,dead), tested on Forti900D running FortiOS 6.4.5, Forti60F 6.4.5
 # - added FortiGate conserve mode for proxy and kernel (conserve-proxy , conserve-kernel)
-# Release 1.8.8 (2021-09-09) René Riech (rene.riech (at) t-online.de)
+# Release 1.8.8 (2021-09-09) RenÃ© Riech (rene.riech (at) t-online.de)
 # - Added checks for Fortigate FG201 (tested on FortiOS v6.4.5)
 # Release 1.8.9 (2021-06-18) Sebastian Gruber  (git (at) 94g.de)
 # - fixed Fortigate License Check
@@ -110,7 +111,10 @@
 # - fixed checks for Fortigate system info introduced: cpu-sys , mem-sys
 # - added Sessions check for IPv4 / IPv6 ses-ipv4, ses-ipv6
 # - reorder OIDs
-# Release 1.8.11 (2022-09-29) Dariusz Zielinski-Kolasinski
+# Release 1.8.11 (2022-03-25) Muhammed Suhile
+# - adedd sd-wan member health check for member 1(pktloss) and member 2(pktloss2)
+# - added FortiGate managed forti-switchs status check (offline, online)
+# Release 1.8.12 (2022-09-29) Dariusz Zielinski-Kolasinski
 # - allow "any" value for critical/waring when in "wtp" mode (tested on Forti900D)
 #
 # This program is free software; you can redistribute it and/or
@@ -270,6 +274,13 @@ my $oid_wtpmanaged        = ".1.3.6.1.4.1.12356.101.14.2.4.0";     # Represents 
 my $oid_apipaddrtableroot = ".1.3.6.1.4.1.12356.101.14.4.4.1.3" ;  # Represents the IP address of a WTP
 my $oid_apidtableroot     = ".1.3.6.1.4.1.12356.101.14.4.4.1.1" ;  # Represents the unique identifier of a WTP
 
+# Switch
+my $oid_swstatetableroot  = ".1.3.6.1.4.1.12356.101.24.1.1.1";     # Represents the connection state of a SW to FG: offLine(1), onLine(2), downloadingImage(3), connectedImage(4), other(0)
+my $oid_swstatus          = ".7";                                  # Represents the number of switchs status being managed on the FG
+my $oid_swip              = ".9" ;                                 # Represents the IP address of a SW
+my $oid_swname            = ".3" ;                                 # Represents the seriel number of a SW
+
+
 # HARDWARE SENSORS
 # "A list of device specific hardware sensors and values. Because different devices have different hardware sensor capabilities, this table may or may not contain any values."
 my $oid_hwsensor_cnt     = ".1.3.6.1.4.1.12356.101.4.3.1.0";       # Hardware Sensor count
@@ -283,6 +294,11 @@ my $oid_sdwan_healthcheck_count       = ".1.3.6.1.4.1.12356.101.4.9.1.0";    # S
 my $oid_sdwan_healthcheck_state_table = ".1.3.6.1.4.1.12356.101.4.9.2.1.4";  # SDWAN HealthCheck state table
 my $oid_sdwan_healthcheck_name_table  = ".1.3.6.1.4.1.12356.101.4.9.2.1.2";  # SDWAN HealthCheck name table
 my $oid_sdwan_healthcheck_iname_table = ".1.3.6.1.4.1.12356.101.4.9.2.1.14"; # SDWAN HealthCheck interface name table
+
+# fg sdwan health
+my $oid_chklink_pktloss1  = ".1.3.6.1.4.1.12356.101.4.9.2.1.9.1";  # Location of Current packet loss sdwan-memeber 1 (percentage)
+my $oid_chklink_pktloss2  = ".1.3.6.1.4.1.12356.101.4.9.2.1.9.2";  # Location of Current packet loss sdwan-memeber 2 (percentage)
+
 
 # conserve Mode
 my $oid_lowmem_capacity     = ".1.3.6.1.4.1.12356.101.4.1.10.0";        #Total lowmem  memory (RAM) capacity (KB)
@@ -371,6 +387,8 @@ given ( $curr_serial ) {
          when ("mem") { ($return_state, $return_string) = get_health_value($oid_legacy_mem, "Memory", "%"); }
          when ("ses") { ($return_state, $return_string) = get_health_value($oid_legacy_ses, "Session", ""); }
          when ("net") { ($return_state, $return_string) = get_health_value($oid_legacy_net, "Network", ""); }
+		 when ("pktloss") { ($return_state, $return_string) = get_pktloss_value(); }
+		 when ("pktloss2") { ($return_state, $return_string) = get_pktloss_value2(); }
          default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|ses|net, $curr_device is a Legacy Fortigate (S/N: $curr_serial)"); }
       }
    } default { # OTHERS (FG = FORTIGATE...)
@@ -389,9 +407,12 @@ given ( $curr_serial ) {
          when ("uptime") { ($return_state, $return_string) = get_uptime(); }
          when ("vpn") { ($return_state, $return_string) = get_vpn_state(); }
          when ("wtp") { ($return_state, $return_string) = get_wtp_state("%"); }
+         when ("switch") { ($return_state, $return_string) = get_sw_state(); }
          when ("hw" ) { ($return_state, $return_string) = get_hw_state("%"); }
          when ("firmware") { ($return_state, $return_string) = get_firmware_state(); }
          when ("sdwan-hc") { ($return_state, $return_string) = get_sdwan_hc(); }
+		 when ("pktloss") { ($return_state, $return_string) = get_pktloss_value(); }
+		 when ("pktloss2") { ($return_state, $return_string) = get_pktloss_value2(); }
          when ("conserve-proxy") { ($return_state, $return_string) = get_conserve_mode($oid_mem_enter_proxy_thrsh,$oid_mem_leave_proxy_thrsh,"proxy"); }
          when ("conserve-kernel") { ($return_state, $return_string) = get_conserve_mode($oid_mem_enter_ker_thrsh,$oid_mem_leave_ker_thrsh,"kernel"); }
          when ("linkmonitor-hc") { ($return_state, $return_string) = get_linkmonitor_hc(); }
@@ -474,6 +495,39 @@ sub get_disk_usage {
   }
 
   $return_string = $return_state . ": " . $return_string . "|'disk'=" . $value . "%;" . $warn . ";" . $crit;
+  return ($return_state, $return_string);
+}
+
+sub get_pktloss_value {
+  my $value = get_snmp_value($session, $oid_chklink_pktloss1);
+  if ( $value >= $crit ) {
+    $return_state = "CRITICAL";
+    $return_string = "wan1 Packet loss is critical: " . $value . "%";
+  } elsif ( $value >= $warn ) {
+    $return_state = "WARNING";
+    $return_string = "wan1 Packet loss is warning: " . $value . "%";
+  } else {
+    $return_state = "OK";
+    $return_string = "No packet loss for wan1: " . $value. "%";
+  }
+
+  $return_string = $return_state . ": " . $return_string . "|'pktloss'=" . $value . "%;" . $warn . ";" . $crit;
+  return ($return_state, $return_string);
+}
+sub get_pktloss_value2 {
+  my $value = get_snmp_value($session, $oid_chklink_pktloss2);
+  if ( $value >= $crit ) {
+    $return_state = "CRITICAL";
+    $return_string = "wan1 Packet loss is critical: " . $value . "%";
+  } elsif ( $value >= $warn ) {
+    $return_state = "WARNING";
+    $return_string = "wan1 Packet loss is warning: " . $value . "%";
+  } else {
+    $return_state = "OK";
+    $return_string = "No packet loss for wan2: " . $value. "%";
+  }
+
+  $return_string = $return_state . ": " . $return_string . "|'pktloss'=" . $value . "%;" . $warn . ";" . $crit;
   return ($return_state, $return_string);
 }
 
@@ -758,7 +812,7 @@ sub get_vpn_state {
     TUNNEL_DOWN => 1,
     TUNNEL_UP   => 2,
   };
-  $return_state = "OK";
+ $return_state = "OK";
 
   # Unless specifically requesting IPSec checks only, do an SSL connection check
   if ($vpnmode ne "ipsec"){
@@ -804,7 +858,7 @@ sub get_vpn_state {
     if ($ipstunsdown > 0 and $mode >= 1) {
       $return_string_errors .= sprintf("DOWN[%s]", join(", ", @tunnels_down));
     }
-  }
+}
   #Set Unitstate
   if (($mode >= 2 ) && ($vpnmode ne "ssl")) {
     if ($ipstunsdown == 1) { $return_state = "WARNING"; }
@@ -903,6 +957,69 @@ sub get_wtp_state {
 
   return ($return_state, $return_string);
 } # end wtp state
+
+sub get_sw_state {
+  my $fswitchsdown = 0;
+  my $fswitchscount = 0;
+  my $fswitchsup = 0;
+  my $return_string_errors = "";
+
+  use constant {
+    SWITCH_DOWN => 0,
+    SWITCH_UP   => 1,
+  };
+  $return_state = "OK";
+
+# Get just the authorised switch data
+    my %switches_names  = %{get_snmp_table($session, $oid_swstatetableroot . $oid_swname)};
+    my %switches_status = %{get_snmp_table($session, $oid_swstatetableroot . $oid_swstatus)};
+
+    %switches_names  = map { (my $tempr = $_ ) =~ s/^${oid_swstatetableroot}${oid_swname}\.//; $tempr => $switches_names{$_}  } keys %switches_names;
+    %switches_status = map { (my $tempr = $_ ) =~ s/^${oid_swstatetableroot}${oid_swstatus}\.//; $tempr => $switches_status{$_} } keys %switches_status;
+
+    my %switches = map {
+      $_ => {
+        "name"   => $switches_names{$_},
+        "status" => $switches_status{$_}
+      }
+    } keys %switches_names;
+    my @switches_up   = map { $switches{$_}{"name"} } grep { $switches{$_}{"status"} eq SWITCH_UP   } keys %switches;
+    my @switches_down = map { $switches{$_}{"name"} } grep { $switches{$_}{"status"} eq SWITCH_DOWN } keys %switches;
+    $fswitchscount = scalar keys %switches;
+    $fswitchsup = scalar @switches_up;
+    $fswitchsdown = scalar @switches_down;
+
+    if ($fswitchsdown > 0) {
+      $return_string_errors .= sprintf("DOWN[%s]", join(", ", @switches_down));
+    }
+
+  #Set Unitstate
+   if ( $fswitchsdown >= $crit ) {
+      $return_state = "CRITICAL";
+    } elsif ( $fswitchsdown >= $warn ) {
+      $return_state = "WARNING";
+    }
+
+
+  # Write an output string...
+  $return_string = $return_state . ": " . $curr_device . " (Master: " . $curr_serial .")" . ", Switches  Online/Configured: " . $fswitchsup . "/" . $fswitchscount . ", Switches  Offline: " . $fswitchsdown . " " . $return_string_errors;
+
+  # Create performance data
+  $perf="|'Online Switches'=".$fswitchsup." 'Offline Switches'=".$fswitchsdown;
+  $return_string .= $perf;
+
+  # Check to see if the output string contains either "unkw", "warning" or "down", and set an output state accordingly...
+  if($return_string =~/uknw/i){
+    $return_state = "UNKNOWN";
+  }
+  if($return_string =~/warning/i){
+    $return_state = "WARNING";
+  }
+  if($return_string =~/critical/i){
+    $return_state = "CRITICAL";
+  }
+  return ($return_state, $return_string);
+} # end switch state
 
 sub get_hw_state{
    my $k;
@@ -1449,7 +1566,7 @@ as an alternative to --authpassword/--privpassword/--community
 =over
 
 =item B<-T|--type>
-STRING - CPU, MEM, cpu-sys, mem-sys, ses, VPN, net, disk, ha, hasync, uptime, Cluster, wtp, hw, fazcpu, fazmem, fazdisk, sdwan-hc, fmgdevice, license, license-version, linkmonitor-hc
+STRING - CPU, MEM, cpu-sys, mem-sys, ses, VPN, net, disk, ha, hasync, uptime, Cluster, wtp, switch, hw, fazcpu, fazmem, fazdisk, sdwan-hc, pktloss, pktloss2, fmgdevice, license, license-version, linkmonitor-hc
 
 =item B<-S|--serial>
 STRING - Primary serial number.
