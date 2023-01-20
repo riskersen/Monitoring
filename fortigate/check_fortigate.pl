@@ -12,15 +12,15 @@
 # Tested on: FortiManager (6.4.7)
 # Tested on: FortiGate 100A (2.8)
 # Tested on: FortiGate 800D (6.2.3)
-# Tested on: FortiGate 900D (6.4.5)
-# Tested on: FortiGate 60F (6.4.5, 6.4.7, 6.4.8, 6.4.9)
+# Tested on: FortiGate 900D (6.4.5, 7.2.3)
+# Tested on: FortiGate 60F (6.4.5, 6.4.7, 6.4.8, 6.4.9, 7.2.3)
 # Tested on: FortiGate 200F (6.4.5, 6.4.7, 6.4.8, 6.4.9)
 # Tested on: FortiGate 300D (6.4.5, 6.4.7, 6.4.8, 6.4.9)
-# Tested on: FortiGate 60E (6.4.5)
+# Tested on: FortiGate 60E (6.4.5, 7.2.3)
 # Tested on: FortiGate 200E (6.4.5)
 #
 # Author: Sebastian Gruber (git (at) 94g.de)
-# Date: 2022-09-29
+# Date: 2023-01-20
 #
 # Changelog:
 # Release 1.0 (2013)
@@ -116,6 +116,8 @@
 # - added FortiGate managed forti-switchs status check (offline, online)
 # Release 1.8.12 (2022-09-29) Dariusz Zielinski-Kolasinski
 # - allow "any" value for critical/waring when in "wtp" mode (tested on Forti900D)
+# Release 1.8.13 (2023-01-20) Dariusz Zielinski-Kolasinski
+# - added Fortigate DHCP free lease check
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -287,7 +289,6 @@ my $oid_swstatus          = ".7";                                  # Represents 
 my $oid_swip              = ".9" ;                                 # Represents the IP address of a SW
 my $oid_swname            = ".3" ;                                 # Represents the seriel number of a SW
 
-
 # HARDWARE SENSORS
 # "A list of device specific hardware sensors and values. Because different devices have different hardware sensor capabilities, this table may or may not contain any values."
 my $oid_hwsensor_cnt     = ".1.3.6.1.4.1.12356.101.4.3.1.0";       # Hardware Sensor count
@@ -332,6 +333,10 @@ my $oid_license_version_upd_time_table       = ".1.3.6.1.4.1.12356.101.4.6.3.2.2
 my $oid_license_version_upd_method_table     = ".1.3.6.1.4.1.12356.101.4.6.3.2.2.1.5";  # License Version update method
 my $oid_license_version_try_time_table       = ".1.3.6.1.4.1.12356.101.4.6.3.2.2.1.6";  # License Version try time
 my $oid_license_version_try_result_table     = ".1.3.6.1.4.1.12356.101.4.6.3.2.2.1.7";  # License Version try result
+
+# FG DHCP Lease table
+my $oid_dhcp_srv_count  = ".1.3.6.1.4.1.12356.101.23.1.1.0"; # Returns DHCP server count
+my $oid_dhcp_free_lease = ".1.3.6.1.4.1.12356.101.23.2.1.1.2"; # Returns lease usage [%] per DHCP server per VDOM (?)
 
 ## Stuff ##
 my $return_state;                                     # return state
@@ -440,6 +445,7 @@ given ( $curr_serial ) {
          when ("linkmonitor-hc") { ($return_state, $return_string) = get_linkmonitor_hc(); }
          when ("license") { ($return_state, $return_string) = get_license_contract(); }
          when ("license-version") { ($return_state, $return_string) = get_license_version(); }
+         when ("dhcp" ) { ($return_state, $return_string) = get_dhcp_state(); }
          default { ($return_state, $return_string) = get_cluster_state(); }
       }
    }
@@ -1343,6 +1349,52 @@ sub get_conserve_mode {
   return ($return_state, $return_string);
 } # end get_conserve_mode
 
+# Get DHCP free leases
+sub get_dhcp_state {
+   my $return_state;
+   my $return_string;
+   my $dhcp_srv_cnt = get_snmp_value($session, $oid_dhcp_srv_count);
+   my $dhcp_rv = 0;
+   if ( $dhcp_srv_cnt > 0 ) {
+      my %dhcp_free_table = %{get_snmp_table($session, $oid_dhcp_free_lease)};
+
+      my @dhcp_state_arr;
+
+      foreach my $coid (keys(%dhcp_free_table)) {
+         my $k = (split(/\./, $coid))[-1];
+         my $value = $dhcp_free_table{$coid};
+         if ( $value >= $crit ) {
+           push (@dhcp_state_arr, ('CRIT('.$k.'):'.$value.'%'));
+           $dhcp_rv = 2;
+         } elsif ( $value >= $warn ) {
+           push (@dhcp_state_arr, ('WARN('.$k.'):'.$value.'%'));
+           if ($dhcp_rv < 1) {
+             $dhcp_rv = 1;
+           }
+         } else {
+           push (@dhcp_state_arr, ($k.':'.$value.'%'));
+         }
+      }
+
+      if ($dhcp_rv == 1) {
+        $return_state = 'WARNING';
+        $return_string = 'DHCP WARN: '.join('; ', @dhcp_state_arr);
+      } elsif ($dhcp_rv == 2) {
+        $return_state = 'CRITICAL';
+        $return_string = 'DHCP CRIT: '.join('; ', @dhcp_state_arr);
+      } else {
+        $return_state = 'OK';
+        $return_string = 'DHCP OK: '.join('; ', @dhcp_state_arr);
+      }
+
+   } else {
+      $return_string = 'UNKNOWN: device has no DHCP servers available';
+      $return_state = 'UNKNOWN';
+   }
+
+  return ($return_state, $return_string);
+}
+
 sub close_snmp_session{
   my $session = $_[0];
 
@@ -1588,7 +1640,7 @@ as an alternative to --authpassword/--privpassword/--community
 =over
 
 =item B<-T|--type>
-STRING - CPU, MEM, cpu-sys, mem-sys, ses, VPN, net, disk, ha, hasync, uptime, Cluster, wtp, switch, hw, fazcpu, fazmem, fazdisk, sdwan-hc, pktloss, pktloss2, fmgdevice, license, license-version, linkmonitor-hc
+STRING - CPU, MEM, cpu-sys, mem-sys, ses, VPN, net, disk, ha, hasync, uptime, Cluster, wtp, switch, hw, fazcpu, fazmem, fazdisk, sdwan-hc, pktloss, pktloss2, fmgdevice, license, license-version, linkmonitor-hc, dhcp
 
 =item B<-S|--serial>
 STRING - Primary serial number.
@@ -1597,13 +1649,13 @@ STRING - Primary serial number.
 BOOL - Get values of slave
 
 =item B<-w|--warning>
-INTEGER - Warning threshold, applies to cpu, cpu-sys, mem, mem-sys, disk, net, ses, ses-ipv4, ses-ipv6, uptime, license.
+INTEGER - Warning threshold, applies to cpu, cpu-sys, mem, mem-sys, disk, net, ses, ses-ipv4, ses-ipv6, uptime, license, dhcp.
 
 =item B<-w|--warning>
 INTEGER or STRING - Warning threshold or word "any", applies to wtp
 
 =item B<-c|--critical>
-INTEGER - Critical threshold, applies to cpu, cpu-sys, mem, mem-sys, disk, net, ses, ses-ipv4, ses-ipv6, license.
+INTEGER - Critical threshold, applies to cpu, cpu-sys, mem, mem-sys, disk, net, ses, ses-ipv4, ses-ipv6, license, dhcp.
 
 =item B<-c|--critical>
 INTEGER or STRING - Critical threshold or word "any", applies to wtp
