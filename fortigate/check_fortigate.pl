@@ -828,6 +828,7 @@ sub get_vpn_state {
   my $ipstunsopen = 0;
   my $ActiveSSL = 0;
   my $ActiveSSLTunnel = 0;
+  my $match_whitelist = 0;
   my $return_string_errors = "";
 
   use constant {
@@ -857,10 +858,18 @@ sub get_vpn_state {
     %tunnels_names  = map { (my $temp = $_ ) =~ s/^${oid_ipsectuntableroot}${oidf_tunname}\.//; $temp => $tunnels_names{$_}  } keys %tunnels_names;
     %tunnels_status = map { (my $temp = $_ ) =~ s/^${oid_ipsectuntableroot}${oidf_tunstatus}\.//; $temp => $tunnels_status{$_} } keys %tunnels_status;
 
-    if (defined($whitelist) and length($whitelist))
-    {
-      delete $tunnels_names{$_} for grep { $tunnels_names{$_} !~ $whitelist } keys %tunnels_names;
+    if (defined($whitelist) and length($whitelist)) {
+      my @matches = grep { $tunnels_names{$_} =~ $whitelist } keys %tunnels_names;
+
+      if (@matches) {
+          delete $tunnels_names{$_} for grep { $tunnels_names{$_} !~ $whitelist } keys %tunnels_names;
+	  $match_whitelist = 1;
+      } else {
+	  # Whitelist not match - need invertigate
+	  $return_string = "Whitelist not match any VPN name. ";
+      }
     }
+
     if (defined($blacklist) and length($blacklist))
     {
       delete $tunnels_names{$_} for grep { $tunnels_names{$_} =~ $blacklist } keys %tunnels_names;
@@ -885,10 +894,11 @@ sub get_vpn_state {
   if (($mode >= 2 ) && ($vpnmode ne "ssl")) {
     if ($ipstunsdown == 1) { $return_state = "WARNING"; }
     if ($ipstunsdown >= 2) { $return_state = "CRITICAL"; }
+    if ($match_whitelist == 0) { $return_state = "UNKNOWN"; }
   }
 
   # Write an output string...
-  $return_string = $return_state . ": " . $curr_device . " (Master: " . $curr_serial .")";
+  $return_string = $return_state . ": " . $return_string . $curr_device . " (Master: " . $curr_serial .")";
 
   if ($vpnmode ne "ipsec") {
     #Add the SSL tunnel count
@@ -902,16 +912,6 @@ sub get_vpn_state {
   $perf="|'ActiveSSL-VPN'=".$ActiveSSL." 'ActiveIPSEC'=".$ipstunsopen;
   $return_string .= $perf;
 
-  # Check to see if the output string contains either "unkw", "warning" or "down", and set an output state accordingly...
-  if($return_string =~/uknw/i){
-    $return_state = "UNKNOWN";
-  }
-  if($return_string =~/warning/i){
-    $return_state = "WARNING";
-  }
-  if($return_string =~/down/i){
-    $return_state = "CRITICAL";
-  }
   return ($return_state, $return_string);
 } # end vpn state
 
