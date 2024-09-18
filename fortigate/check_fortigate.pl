@@ -893,8 +893,7 @@ sub get_vpn_state {
 }
   #Set Unitstate
   if (($mode >= 2 ) && ($vpnmode ne "ssl")) {
-    if ($ipstunsdown == 1) { $return_state = "WARNING"; }
-    if ($ipstunsdown >= 2) { $return_state = "CRITICAL"; }
+    if ($ipstunsdown >= 1) { $return_state = "CRITICAL"; }
     if (defined($match_whitelist) and $match_whitelist == 0) { $return_state = "UNKNOWN"; }
   }
 
