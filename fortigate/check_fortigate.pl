@@ -116,6 +116,8 @@
 # - added FortiGate managed forti-switchs status check (offline, online)
 # Release 1.8.12 (2022-09-29) Dariusz Zielinski-Kolasinski
 # - allow "any" value for critical/waring when in "wtp" mode (tested on Forti900D)
+# Release 1.8.13 (2024-11-22) Luca Gubler
+# - Refactor deprecated `when` and `given` statements and use `if/elsif/else` statements
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -144,7 +146,7 @@ use POSIX;
 use Date::Parse;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.8.10";
+my $script_version = "1.8.13";
 
 # for more information.
 my %status = (     # Enumeration for the output Nagios states
@@ -354,102 +356,157 @@ if ( $curr_device=~/100A/) {
 }
 
 # Use s/n to determinate device
-given ( $curr_serial ) {
-   when ( /^(FL|FAZ)/ ) { # FL|FAZ = FORTIANALYZER
-      given ( lc($type) ) {
-         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_faz_cpu_used, "CPU", "%"); }
-         when ("mem") { ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%"); }
-         when ("disk") { ($return_state, $return_string) = get_faz_health_value($oid_faz_disk_used, $oid_faz_disk_avail, "Disk", "%"); }
-         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|disk $curr_device is a FORTIANALYZER (S/N: $curr_serial)"); }
-      }
-   } when ( /^FAC/ ) { # FAC = FortiAuthenticator
-      given ( lc($type) ) {
-         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_fac_cpu, "CPU", "%"); }
-         when ("mem") { ($return_state, $return_string) = get_health_value($oid_fac_mem, "Memory", "%"); }
-         when ("ldisk") { ($return_state, $return_string) = get_health_value($oid_fac_ldisk, "Log Disk", "%"); }
-         when ("ha") {
-            $oid_ha = $oid_fac_ha; # hack to get "ha" check going
-            ($return_state, $return_string) = get_ha_mode();
-         }
-         when ("firmware") {
-            $oid_firmware = $oid_fac_firmware; # hack to get "firmware" check going
-            ($return_state, $return_string) = get_firmware_state();
-         }
-         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|firmware|ha|mem|ldisk, $curr_device is a FORTIAUTHENTICATOR (S/N: $curr_serial)"); }
-      }
-   } when ( /^FMG/ ) { # FMG = FortiManager
-      given ( lc($type) ) {
-         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_fmg_cpu_used, "CPU", "%"); }
-         when ("mem") { ($return_state, $return_string) = get_fmg_health_value($oid_fmg_mem_used, $oid_fmg_mem_avail, "Memory", "%"); }
-         when ("disk") { ($return_state, $return_string) = get_fmg_health_value($oid_fmg_disk_used, $oid_fmg_disk_avail, "Disk", "%"); }
-         when ("fmgdevice") { ($return_state, $return_string) = get_fmg_device_state(); }
-         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|disk|fmgdevice $curr_device is a FORTIMANAGER (S/N: $curr_serial)"); }
-      }
-   } when ( /^FE/ ) { # FE = FORTIMAIL
-      given ( lc($type) ) {
-         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_fe_cpu, "CPU", "%"); }
-         when ("mem") { ($return_state, $return_string) = get_health_value($oid_fe_mem, "Memory", "%"); }
-         when ("disk") { ($return_state, $return_string) = get_health_value($oid_fe_mdisk, "Disk", "%"); }
-         when ("ldisk") { ($return_state, $return_string) = get_health_value($oid_fe_ldisk, "Log Disk", "%"); }
-         when ("load") { ($return_state, $return_string) = get_health_value($oid_fe_load, "Load", "%"); }
-         when ("ses") { ($return_state, $return_string) = get_health_value($oid_fe_ses, "Session", ""); }
-         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|disk|ldisk|load|ses, $curr_device is a FORTIMAIL (S/N: $curr_serial)"); }
-      }
-   } when ( /^FAD/ ) { # FAD = FortiADC
-      given ( lc($type) ) {
-         when ("cpu")   { ($return_state, $return_string) = get_health_value($oid_fad_cpu, "CPU", "%"); }
-         when ("mem")   { ($return_state, $return_string) = get_health_value($oid_fad_mem, "Memory", "%"); }
-         when ("ldisk") { ($return_state, $return_string) = get_health_value($oid_fad_ldisk, "Log Disk", "%"); }
-         when ("load")  { ($return_state, $return_string) = get_health_value($oid_fad_load, "Load", "%"); }
-         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|ldisk|load, $curr_device is a FortiADC (S/N: $curr_serial)"); }
-      }
-   } when ( /^FG100A/ ) { # 100A = Legacy Device
-      given ( lc($type) ) {
-         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_legacy_cpu, "CPU", "%"); }
-         when ("mem") { ($return_state, $return_string) = get_health_value($oid_legacy_mem, "Memory", "%"); }
-         when ("ses") { ($return_state, $return_string) = get_health_value($oid_legacy_ses, "Session", ""); }
-         when ("net") { ($return_state, $return_string) = get_health_value($oid_legacy_net, "Network", ""); }
-		 when ("pktloss") { ($return_state, $return_string) = get_pktloss_value(); }
-		 when ("pktloss2") { ($return_state, $return_string) = get_pktloss_value2(); }
-         default { ($return_state, $return_string) = ('UNKNOWN',"UNKNOWN: This device supports only selected type -T cpu|mem|ses|net, $curr_device is a Legacy Fortigate (S/N: $curr_serial)"); }
-      }
-   } default { # OTHERS (FG = FORTIGATE...)
-      given ( lc($type) ) {
-         when ("cpu") { ($return_state, $return_string) = get_health_value($oid_cpu, "CPU", "%"); }
-         when ("cpu-sys") { ($return_state, $return_string) = get_health_value($oid_cpu_sys, "CPU", "%"); }
-         when ("mem") { ($return_state, $return_string) = get_health_value($oid_mem, "Memory", "%"); }
-         when ("mem-sys") { ($return_state, $return_string) = get_health_value($oid_mem_sysmem, "Memory", "%"); }
-         when ("net") { ($return_state, $return_string) = get_health_value($oid_net, "Network", "kb"); }
-         when ("ses") { ($return_state, $return_string) = get_health_value($oid_ses_ha, "Session", ""); }
-         when ("ses-ipv4") { ($return_state, $return_string) = get_health_value($oid_ses_device_ipv4, "Session IPv4", ""); }
-         when ("ses-ipv6") { ($return_state, $return_string) = get_health_value($oid_ses_device_ipv6, "Session IPv6", ""); }
-         when ("disk") { ($return_state, $return_string) = get_disk_usage(); }
-         when ("ha") { ($return_state, $return_string) = get_ha_mode(); }
-         when ("hasync") { ($return_state, $return_string) = get_ha_sync(); }
-         when ("uptime") { ($return_state, $return_string) = get_uptime(); }
-         when ("vpn") { ($return_state, $return_string) = get_vpn_state(); }
-         when ("wtp") { ($return_state, $return_string) = get_wtp_state("%"); }
-         when ("switch") { ($return_state, $return_string) = get_sw_state(); }
-         when ("hw" ) { ($return_state, $return_string) = get_hw_state("%"); }
-         when ("firmware") { ($return_state, $return_string) = get_firmware_state(); }
-         when ("sdwan-hc") { ($return_state, $return_string) = get_sdwan_hc(); }
-		 when ("pktloss") { ($return_state, $return_string) = get_pktloss_value(); }
-		 when ("pktloss2") { ($return_state, $return_string) = get_pktloss_value2(); }
-         when ("conserve-proxy") { ($return_state, $return_string) = get_conserve_mode($oid_mem_enter_proxy_thrsh,$oid_mem_leave_proxy_thrsh,"proxy"); }
-         when ("conserve-kernel") { ($return_state, $return_string) = get_conserve_mode($oid_mem_enter_ker_thrsh,$oid_mem_leave_ker_thrsh,"kernel"); }
-         when ("linkmonitor-hc") { ($return_state, $return_string) = get_linkmonitor_hc(); }
-         when ("license") { ($return_state, $return_string) = get_license_contract(); }
-         when ("license-version") { ($return_state, $return_string) = get_license_version(); }
-         default { ($return_state, $return_string) = get_cluster_state(); }
-      }
-   }
+if ( $curr_serial =~ /^(FL|FAZ)/ ) { # FL|FAZ = FORTIANALYZER
+    my $type_lc = lc($type);
+    if ( $type_lc eq "cpu" ) {
+        ($return_state, $return_string) = get_health_value($oid_faz_cpu_used, "CPU", "%");
+    } elsif ( $type_lc eq "mem" ) {
+        ($return_state, $return_string) = get_faz_health_value($oid_faz_mem_used, $oid_faz_mem_avail, "Memory", "%");
+    } elsif ( $type_lc eq "disk" ) {
+        ($return_state, $return_string) = get_faz_health_value($oid_faz_disk_used, $oid_faz_disk_avail, "Disk", "%");
+    } else {
+        ($return_state, $return_string) = ('UNKNOWN', "UNKNOWN: This device supports only selected type -T cpu|mem|disk $curr_device is a FORTIANALYZER (S/N: $curr_serial)");
+    }
+} elsif ( $curr_serial =~ /^FAC/ ) { # FAC = FortiAuthenticator
+    my $type_lc = lc($type);
+    if ( $type_lc eq "cpu" ) {
+        ($return_state, $return_string) = get_health_value($oid_fac_cpu, "CPU", "%");
+    } elsif ( $type_lc eq "mem" ) {
+        ($return_state, $return_string) = get_health_value($oid_fac_mem, "Memory", "%");
+    } elsif ( $type_lc eq "ldisk" ) {
+        ($return_state, $return_string) = get_health_value($oid_fac_ldisk, "Log Disk", "%");
+    } elsif ( $type_lc eq "ha" ) {
+        $oid_ha = $oid_fac_ha; # hack to get "ha" check going
+        ($return_state, $return_string) = get_ha_mode();
+    } elsif ( $type_lc eq "firmware" ) {
+        $oid_firmware = $oid_fac_firmware; # hack to get "firmware" check going
+        ($return_state, $return_string) = get_firmware_state();
+    } else {
+        ($return_state, $return_string) = ('UNKNOWN', "UNKNOWN: This device supports only selected type -T cpu|firmware|ha|mem|ldisk, $curr_device is a FORTIAUTHENTICATOR (S/N: $curr_serial)");
+    }
+} elsif ( $curr_serial =~ /^FMG/ ) { # FMG = FortiManager
+    my $type_lc = lc($type);
+    if ( $type_lc eq "cpu" ) {
+        ($return_state, $return_string) = get_health_value($oid_fmg_cpu_used, "CPU", "%");
+    } elsif ( $type_lc eq "mem" ) {
+        ($return_state, $return_string) = get_fmg_health_value($oid_fmg_mem_used, $oid_fmg_mem_avail, "Memory", "%");
+    } elsif ( $type_lc eq "disk" ) {
+        ($return_state, $return_string) = get_fmg_health_value($oid_fmg_disk_used, $oid_fmg_disk_avail, "Disk", "%");
+    } elsif ( $type_lc eq "fmgdevice" ) {
+        ($return_state, $return_string) = get_fmg_device_state();
+    } else {
+        ($return_state, $return_string) = ('UNKNOWN', "UNKNOWN: This device supports only selected type -T cpu|mem|disk|fmgdevice $curr_device is a FORTIMANAGER (S/N: $curr_serial)");
+    }
+} elsif ( $curr_serial =~ /^FE/ ) { # FE = FORTIMAIL
+    my $type_lc = lc($type);
+    if ( $type_lc eq "cpu" ) {
+        ($return_state, $return_string) = get_health_value($oid_fe_cpu, "CPU", "%");
+    } elsif ( $type_lc eq "mem" ) {
+        ($return_state, $return_string) = get_health_value($oid_fe_mem, "Memory", "%");
+    } elsif ( $type_lc eq "disk" ) {
+        ($return_state, $return_string) = get_health_value($oid_fe_mdisk, "Disk", "%");
+    } elsif ( $type_lc eq "ldisk" ) {
+        ($return_state, $return_string) = get_health_value($oid_fe_ldisk, "Log Disk", "%");
+    } elsif ( $type_lc eq "load" ) {
+        ($return_state, $return_string) = get_health_value($oid_fe_load, "Load", "%");
+    } elsif ( $type_lc eq "ses" ) {
+        ($return_state, $return_string) = get_health_value($oid_fe_ses, "Session", "");
+    } else {
+        ($return_state, $return_string) = ('UNKNOWN', "UNKNOWN: This device supports only selected type -T cpu|mem|disk|ldisk|load|ses, $curr_device is a FORTIMAIL (S/N: $curr_serial)");
+    }
+} elsif ( $curr_serial =~ /^FAD/ ) { # FAD = FortiADC
+    my $type_lc = lc($type);
+    if ( $type_lc eq "cpu" ) {
+        ($return_state, $return_string) = get_health_value($oid_fad_cpu, "CPU", "%");
+    } elsif ( $type_lc eq "mem" ) {
+        ($return_state, $return_string) = get_health_value($oid_fad_mem, "Memory", "%");
+    } elsif ( $type_lc eq "ldisk" ) {
+        ($return_state, $return_string) = get_health_value($oid_fad_ldisk, "Log Disk", "%");
+    } elsif ( $type_lc eq "load" ) {
+        ($return_state, $return_string) = get_health_value($oid_fad_load, "Load", "%");
+    } else {
+        ($return_state, $return_string) = ('UNKNOWN', "UNKNOWN: This device supports only selected type -T cpu|mem|ldisk|load, $curr_device is a FortiADC (S/N: $curr_serial)");
+    }
+} elsif ( $curr_serial =~ /^FG100A/ ) { # 100A = Legacy Device
+    my $type_lc = lc($type);
+    if ( $type_lc eq "cpu" ) {
+        ($return_state, $return_string) = get_health_value($oid_legacy_cpu, "CPU", "%");
+    } elsif ( $type_lc eq "mem" ) {
+        ($return_state, $return_string) = get_health_value($oid_legacy_mem, "Memory", "%");
+    } elsif ( $type_lc eq "ses" ) {
+        ($return_state, $return_string) = get_health_value($oid_legacy_ses, "Session", "");
+    } elsif ( $type_lc eq "net" ) {
+        ($return_state, $return_string) = get_health_value($oid_legacy_net, "Network", "");
+    } elsif ( $type_lc eq "pktloss" ) {
+        ($return_state, $return_string) = get_pktloss_value();
+    } elsif ( $type_lc eq "pktloss2" ) {
+        ($return_state, $return_string) = get_pktloss_value2();
+    } else {
+        ($return_state, $return_string) = ('UNKNOWN', "UNKNOWN: This device supports only selected type -T cpu|mem|ses|net, $curr_device is a Legacy Fortigate (S/N: $curr_serial)");
+    }
+} else { # OTHERS (FG = FORTIGATE...)
+    my $type_lc = lc($type);
+    if ( $type_lc eq "cpu" ) {
+        ($return_state, $return_string) = get_health_value($oid_cpu, "CPU", "%");
+    } elsif ( $type_lc eq "cpu-sys" ) {
+        ($return_state, $return_string) = get_health_value($oid_cpu_sys, "CPU", "%");
+    } elsif ( $type_lc eq "mem" ) {
+        ($return_state, $return_string) = get_health_value($oid_mem, "Memory", "%");
+    } elsif ( $type_lc eq "mem-sys" ) {
+        ($return_state, $return_string) = get_health_value($oid_mem_sysmem, "Memory", "%");
+    } elsif ( $type_lc eq "net" ) {
+        ($return_state, $return_string) = get_health_value($oid_net, "Network", "kb");
+    } elsif ( $type_lc eq "ses" ) {
+        ($return_state, $return_string) = get_health_value($oid_ses_ha, "Session", "");
+    } elsif ( $type_lc eq "ses-ipv4" ) {
+        ($return_state, $return_string) = get_health_value($oid_ses_device_ipv4, "Session IPv4", "");
+    } elsif ( $type_lc eq "ses-ipv6" ) {
+        ($return_state, $return_string) = get_health_value($oid_ses_device_ipv6, "Session IPv6", "");
+    } elsif ( $type_lc eq "disk" ) {
+        ($return_state, $return_string) = get_disk_usage();
+    } elsif ( $type_lc eq "ha" ) {
+        ($return_state, $return_string) = get_ha_mode();
+    } elsif ( $type_lc eq "hasync" ) {
+        ($return_state, $return_string) = get_ha_sync();
+    } elsif ( $type_lc eq "uptime" ) {
+        ($return_state, $return_string) = get_uptime();
+    } elsif ( $type_lc eq "vpn" ) {
+        ($return_state, $return_string) = get_vpn_state();
+    } elsif ( $type_lc eq "wtp" ) {
+        ($return_state, $return_string) = get_wtp_state("%");
+    } elsif ( $type_lc eq "switch" ) {
+        ($return_state, $return_string) = get_sw_state();
+    } elsif ( $type_lc eq "hw" ) {
+        ($return_state, $return_string) = get_hw_state("%");
+    } elsif ( $type_lc eq "firmware" ) {
+        ($return_state, $return_string) = get_firmware_state();
+    } elsif ( $type_lc eq "sdwan-hc" ) {
+        ($return_state, $return_string) = get_sdwan_hc();
+    } elsif ( $type_lc eq "pktloss" ) {
+        ($return_state, $return_string) = get_pktloss_value();
+    } elsif ( $type_lc eq "pktloss2" ) {
+        ($return_state, $return_string) = get_pktloss_value2();
+    } elsif ( $type_lc eq "conserve-proxy" ) {
+        ($return_state, $return_string) = get_conserve_mode($oid_mem_enter_proxy_thrsh, $oid_mem_leave_proxy_thrsh, "proxy");
+    } elsif ( $type_lc eq "conserve-kernel" ) {
+        ($return_state, $return_string) = get_conserve_mode($oid_mem_enter_ker_thrsh, $oid_mem_leave_ker_thrsh, "kernel");
+    } elsif ( $type_lc eq "linkmonitor-hc" ) {
+        ($return_state, $return_string) = get_linkmonitor_hc();
+    } elsif ( $type_lc eq "license" ) {
+        ($return_state, $return_string) = get_license_contract();
+    } elsif ( $type_lc eq "license-version" ) {
+        ($return_state, $return_string) = get_license_version();
+    } else {
+        ($return_state, $return_string) = get_cluster_state();
+    }
 }
+
 
 # Close the connection
 close_snmp_session($session);
 
 # exit with a return code matching the return_state...
-print $return_string."\n";
+print $return_string . "\n";
 exit($status{$return_state});
 
 ########################################################################
@@ -1049,8 +1106,7 @@ sub get_hw_state{
    if ( $sensor_cnt > 0 ) {
       my %hw_name_table = %{get_snmp_table($session, $oid_hwsensorname)};
 
-
-      my %hwsensoralarmstatus= (
+      my %hwsensoralarmstatus = (
          0 => 'False',
          1 => 'True'
       );
@@ -1058,32 +1114,27 @@ sub get_hw_state{
       $return_state = "OK";
       $return_string = "All components are in appropriate state";
       foreach $k (keys(%hw_name_table)) {
-            my $unit;
-            my $hw_name = $hw_name_table{$k};
-            my $sensoralr;
-            given ( $hw_name ) {
-              when ( /Fan\s/) {
-                $unit = "RPM";
-              }
-              when ( /^DTS\sCPU[0-9]?|Temp|LM75|^ADT74(90|62)\s.+/) {
-                $unit = "C";
-              }
-              when ( /^VCCP|^P[13]V[138]_.+|^AD[_\+].+|^\+(12|5|3\.3|1\.5|1\.25|
-                       1\.1)V|^PS[0-9]\s(VIN|VOUT|12V\sOutput)|^AD[_\+].+|
-                       ^INA219\sPS[0-9]\sV(sht|bus)/) {
-                $unit = "V";
-              }
-              default { $unit = "?"; }
-            }
-            my @num = split(/\./, $k);
-            my $sensorid = $num[$#num];
-            my $oid_alarm = $oid_hwsensoralarm . ".$sensorid";
-            my $oid_value = $oid_hwsensorvalue . ".$sensorid";
-            $sensoralr = get_snmp_value($session, $oid_alarm);
+         my $unit;
+         my $hw_name = $hw_name_table{$k};
+         my $sensoralr;
+         if ( $hw_name =~ /Fan\s/ ) {
+            $unit = "RPM";
+         } elsif ( $hw_name =~ /^DTS\sCPU[0-9]?|Temp|LM75|^ADT74(90|62)\s.+/ ) {
+            $unit = "C";
+         } elsif ( $hw_name =~ /^VCCP|^P[13]V[138]_.+|^AD[_\+].+|^\+(12|5|3\.3|1\.5|1\.25|1\.1)V|^PS[0-9]\s(VIN|VOUT|12V\sOutput)|^AD[_\+].+|^INA219\sPS[0-9]\sV(sht|bus)/ ) {
+            $unit = "V";
+         } else {
+            $unit = "?";
+         }
+         my @num = split(/\./, $k);
+         my $sensorid = $num[$#num];
+         my $oid_alarm = $oid_hwsensoralarm . ".$sensorid";
+         my $oid_value = $oid_hwsensorvalue . ".$sensorid";
+         $sensoralr = get_snmp_value($session, $oid_alarm);
          if ($sensoralr == 1){
-               my $sensorval = get_snmp_value($session, $oid_value);
-               $return_string = "$hw_name alarm is $hwsensoralarmstatus{$sensoralr} ($sensorval $unit)";
-             $return_state = "CRITICAL";
+            my $sensorval = get_snmp_value($session, $oid_value);
+            $return_string = "$hw_name alarm is $hwsensoralarmstatus{$sensoralr} ($sensorval $unit)";
+            $return_state = "CRITICAL";
          }
       }
    } else {
@@ -1703,4 +1754,3 @@ Configure for your needs, Traps are not required for this plugin!
 Thats it!
 
 =cut
-
