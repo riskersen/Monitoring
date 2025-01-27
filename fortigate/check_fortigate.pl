@@ -1215,7 +1215,7 @@ sub get_linkmonitor_hc {
         if($mode == 3){
            $return_string = "OK: device has no Link Monitor health checks available";
            $return_state = "OK";
-        }else{
+        } else {
            $return_string = "UNKNOWN: device has no Link Monitor health checks available";
            $return_state = "UNKNOWN";
         }
