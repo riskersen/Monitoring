@@ -1210,13 +1210,13 @@ sub get_linkmonitor_hc {
          $return_state = 'CRITICAL';
       }
    } else {
-   if($mode -eq "3"){
-      $return_string = "OK: device has no Link Monitor health checks available";
-      $return_state = "OK";
-   }else{
-      $return_string = "UNKNOWN: device has no Link Monitor health checks available";
-      $return_state = "UNKNOWN";
-   }
+        if($mode == 3){
+           $return_string = "OK: device has no Link Monitor health checks available";
+           $return_state = "OK";
+        }else{
+           $return_string = "UNKNOWN: device has no Link Monitor health checks available";
+           $return_state = "UNKNOWN";
+        }
    }
    return ($return_state, $return_string);
 } # end get_linkmonitor_hc
