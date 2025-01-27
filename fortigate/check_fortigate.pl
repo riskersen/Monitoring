@@ -118,6 +118,8 @@
 # - allow "any" value for critical/waring when in "wtp" mode (tested on Forti900D)
 # Release 1.8.13 (2024-11-22) Luca Gubler
 # - Refactor deprecated `when` and `given` statements and use `if/elsif/else` statements
+# Release 1.8.14 (2025-01-27) Christian Zettel (ccztux)
+# - Fixed syntax error at ./check_fortigate.pl line 1213, near "-eq"
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -146,7 +148,7 @@ use POSIX;
 use Date::Parse;
 
 my $script = "check_fortigate.pl";
-my $script_version = "1.8.13";
+my $script_version = "1.8.14";
 
 # for more information.
 my %status = (     # Enumeration for the output Nagios states
@@ -1210,13 +1212,13 @@ sub get_linkmonitor_hc {
          $return_state = 'CRITICAL';
       }
    } else {
-   if($mode -eq "3"){
-      $return_string = "OK: device has no Link Monitor health checks available";
-      $return_state = "OK";
-   }else{
-      $return_string = "UNKNOWN: device has no Link Monitor health checks available";
-      $return_state = "UNKNOWN";
-   }
+        if($mode == 3){
+           $return_string = "OK: device has no Link Monitor health checks available";
+           $return_state = "OK";
+        } else {
+           $return_string = "UNKNOWN: device has no Link Monitor health checks available";
+           $return_state = "UNKNOWN";
+        }
    }
    return ($return_state, $return_string);
 } # end get_linkmonitor_hc
